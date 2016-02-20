@@ -2,6 +2,10 @@
 
 ## A
 
+### Allocate
+
+"確保する"
+
 ### Annotation
 
 "注釈"
@@ -22,6 +26,10 @@
 ### Data race
 
 "データレース"
+
+### De-allocate
+
+"解放する"
 
 ## E
 ## F

@@ -82,4 +82,40 @@ _free_ 命令文が次に実行される文です。
 実際には、この構造体インスタンスの解放は、その構造体インスタンスのフィールドへのアクセスの許可と、その構造体インスタンスを解放する許可の両方を削除します。
 これは不正なメモリアクセスと二重解放エラーを防止します。
 
+## 3. malloc block チャンク
+
+なぜ _malloc_ 命令文が `account_balance` チャンクと `malloc_block_account` チャンクの両方を生成するのかをより理解するために、ヒープに確保される代わりにスタック上のローカル変数として構造体インスタンスが確保されるようにプログラムを変更しましょう:
+
+```c
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    struct account myAccountLocal;
+    struct account *myAccount = &myAccountLocal;
+    myAccount->balance = 5;
+    free(myAccount);
+    return 0;
+}
+```
+
+はじめに、このプログラムはスタックに構造体 `account` のインスタンスを確保し、それを `myAccountLocal` と呼びます。
+それからこの構造体インスタンスのアドレスをポインタ値 `myAccount` に割り当てます。
+プログラムの残りは以前と同じです: プログラムは `balance` フィールドを値 5 に初期化し、それからその構造体インスタンスを解放しようと試みます。
+
+もし VeriFast にこのプログラムを検証させると、VeriFast は _free_ 命令文で次のエラーをレポートします:
+If we ask VeriFast to verify this program, VeriFast reports the error
+
+`No matching heap chunks: malloc block account(myAccountLocal addr)`
+
+実際この _free_ は正しくありません。
+なぜなら _free_ は `malloc` でヒープに確保された構造体インスタンスにのみ適用され、ローカル変数としてスタックに確保された構造体インスタンスには適用できないからです。
+
+VeriFast はこのエラーを次のように検出します:
+1) VeriFast は _malloc_ を使って確保された構造体インスタンスにのみ `malloc_block` チャンクを生成します。このチャンクはスタックに確保された構造体インスタンスを表わしません。
+2) _free_ 命令文を検証するとき、その構造体が解放されるために VeriFast は `malloc_block` チャンクが存在することをチェックします。
+
+その一方で、`account_balance` チャンクはどちらの場合も生成されることに注意してください。
+結果的に、構造体インスタンスがヒープに確保されたかスタックに確保されたかどうかにかかわらず、`balance` フィールドを初期化する命令文は検証に成功します。
+
 xxx
