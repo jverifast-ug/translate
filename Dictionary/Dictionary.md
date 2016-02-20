@@ -25,8 +25,18 @@
 
 ## E
 ## F
+
+### Fact
+
+"事実"
+
 ## G
 ## H
+
+### Heap chunk
+
+"ヒープチャンク"
+
 ## I
 
 ### Illegal memory access
