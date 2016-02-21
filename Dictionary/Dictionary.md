@@ -10,6 +10,10 @@
 
 "注釈"
 
+### Assertion
+
+"表明"
+
 ### Assumption
 
 "仮定"
@@ -20,6 +24,10 @@
 ### Chunk
 
 "チャンク"
+
+### Consuming
+
+"消費"
 
 ## D
 
@@ -76,6 +84,10 @@
 
 "事前条件"
 
+### Producing
+
+"生成"
+
 ### Postcondition
 
 "事後条件"
@@ -87,6 +99,10 @@
 ### Soundness
 
 "健全性"
+
+### Stepping
+
+"ステップ実行"
 
 ### Symbol
 

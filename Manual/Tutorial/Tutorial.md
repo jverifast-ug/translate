@@ -50,7 +50,7 @@ VeriFast IDE にそのプログラムが表示されるでしょう。
 そのプログラムを検査するために、__Verify__ メニューの __Verify program__ コマンドを選択するか、__Play__ ツールバーボタンを押すか、F5 キーを押してください。
 下図のような結果になるでしょう。
 
-![](img/fig1.png)
+![図1. illegal_access.c を開いた VeriFast IDE スクリーンショット](img/fig1.png)
 
 このプログラムは _malloc_ を使って確保した構造体インスタンス `myAccount` のフィールド `balance` にアクセスしようと試みます。
 けれども、もしメモリが不足していたら、_malloc_ はゼロを返してメモリは確保されません。
@@ -67,7 +67,7 @@ VeriFast はこのような場合に起きる不正なメモリアクセスを�
 
 `main` 関数のシンボリック実行を検査するために、カーソルを最後の行 (すなわち関数本体を閉じる括弧) に置いて __Verify__ メニューから __Run to cursor__ コマンドを選択するか、__Run to cursor__ ツールバーボタンを押すか、Ctrl+F5 を押してください。(下図を見てください。)
 
-![](img/fig2.png)
+![図2. VeriFast IDE が関数 main のシンボリック実行パスを表示](img/fig2.png)
 
 カーソルまでの実行とはそのカーソルに至る実行パスを示すことを意味しています。
 一般的に、そのようなパスは複数存在する可能性がありさう; この場合 (そのプログラムテキストによって誘導された分岐の順によって導入されたパスの順番での) その最初のパスが選ばれます。
@@ -104,7 +104,6 @@ int main()
 プログラムの残りは以前と同じです: プログラムは `balance` フィールドを値 5 に初期化し、それからその構造体インスタンスを解放しようと試みます。
 
 もし VeriFast にこのプログラムを検証させると、VeriFast は _free_ 命令文で次のエラーをレポートします:
-If we ask VeriFast to verify this program, VeriFast reports the error
 
 `No matching heap chunks: malloc block account(myAccountLocal addr)`
 
@@ -117,5 +116,151 @@ VeriFast はこのエラーを次のように検出します:
 
 その一方で、`account_balance` チャンクはどちらの場合も生成されることに注意してください。
 結果的に、構造体インスタンスがヒープに確保されたかスタックに確保されたかどうかにかかわらず、`balance` フィールドを初期化する命令文は検証に成功します。
+
+## 4. 関数と契約
+
+前の章の例からはじめます。
+今の時点ではこの例は唯一1つの関数から成ります: それは main 関数です。
+別の関数を追加してみましょう。
+`account` 構造体インスタンスのアドレスと整数の総計を取り、その総計を構造体インスタンスの `balance` フィールドに割り当てる関数 `account_set_balance` を書きます
+そして main 関数のフィールド割り当てをこの関数呼び出しで置き換えます。
+ここで次のプログラムを考えましょう:
+
+```c
+#include "stdlib.h"
+
+struct account {
+    int balance;
+};
+
+void account_set_balance(struct account *myAccount, int newBalance)
+{
+    myAccount->balance = newBalance;
+}
+
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    struct account *myAccount = malloc(sizeof(struct account));
+    if (myAccount == 0) { abort(); }
+    account_set_balance(myAccount, 5);
+    free(myAccount);
+    return 0;
+}
+```
+
+新しいプログラムを検査すると、VeriFast はこの新しい関数が契約を持っていないとエラーを出します。
+実際、VeriFast はそれぞれの関数を別々に検査します。
+そのため、それぞれの関数に関数呼び出しの初期状態と最終状態を表現する事前条件と事後条件が必要です。
+
+main 関数が持つのと同じ契約を追加しましょう:
+
+```c
+void account_set_balance(struct account *myAccount, int newBalance)
+    //@ requires true;
+    //@ ensures true;
+```
+
+全ての VeriFast 注釈と同様に、契約はコメント中に置かれるので、C言語コンパイラはそれらを無視することに注意してください。
+(@) 記号でマークされたコメントを除いて、VeriFast もコメントを無視します。
+
+これでもはや VeriFast は契約の欠落に関するエラーを出さなくなりました。
+けれども今度は、`account_set_balance` 本体のフィールド割り当てが検査できないというエラーが出ます。
+なぜなら、そのシンボリックヒープはこのフィールドへのアクセスを許可するヒープチャンクを含まないからです。
+これを修正するために、関数の事前条件で、その関数がアドレス `myAccount` の `account` 構造体インスタンスの `balance` フィールドへのアクセスに対する許可を要求することを明記しなければなりません。
+事前条件にヒープチャンクを書くことで、この修正を行ないましょう:
+
+```c
+void account_set_balance(struct account *myAccount, int newBalance)
+    //@ requires account_balance(myAccount, _);
+    //@ ensures true;
+```
+
+フィールドの値がある位置にアンダースコアを使っていることに注意してください。
+これは、この関数が呼び出された時に、そのフィールドの古い値について関心がないことを示しています。
+(また VeriFast はフィールドチャンクに対してより完結な構文をサポートしています。
+例えば、`account_balance(myAccount, _)` は `myAccount->balance |-> _` と書くこともできます。
+実際には一般に、後者の (フィールドチャンク固有の) 構文は前者の (総称チャンク) 構文よりも推奨されています。
+なぜならそれは VeriFast に、与えられたフィールドを表わすチャンクが最大1つあり、そのフィールドの値がその型の制限内であるというフィールドチャンク固有の情報を考慮させるからです。
+けれども、注釈に書かれたチャンクと VeriFast IDE で表示されるヒープチャンクが同じ見た目になるように、このチュートリアルでは初めは総称チャンク構文を使います。)
+
+これで VeriFast は関数本体を閉じる括弧をハイライトします。
+これはフィールド割り当ての検証に成功したことを意味しています。
+けれども、VeriFast はこの関数がヒープチャンクをリークしているというエラーを表示します。
+さしあたって単純に、このヒープチャンクのリークを許すことを示す `leak` コマンドを挿入してこのエラーメッセージを回避しましょう。
+後にこの問題に戻ってくることにします。
+
+```c
+void account_set_balance(struct account *myAccount, int newBalance)
+    //@ requires account_balance(myAccount, _);
+    //@ ensures true;
+{
+    myAccount->balance = newBalance;
+    //@ leak account_balance(myAccount, _);
+}
+```
+
+これで関数 `account_set_balance` は検査され、VeriFast は関数 `main` を検査しようと試みます。
+この検査は `account` 構造体インスタンスを解放できないというエラーを出力します。
+なぜなら、`balance` フィールドへのアクセス許可を持たないからです。
+実際、そのシンボリックヒープは `malloc_block_account` チャンクを含みますが、`account_balance` チャンクを含みません。
+何が起きたのでしょうか？
+シンボリック実行パスをステップ実行して調べてみましょう。
+2番目のステップを選択します。
+`malloc` 命令文が実行されようとしており、そのシンボリックヒープは空です。
+次のステップを選択します。
+`malloc` 命令文が `account_balance` チャンクと `malloc_block_account` チャンクを追加しました。
+
+if 命令文は作用がありません。
+
+そうして `account_set_balance` を呼び出します。
+この実行ステップは "Consuming assertion" と "Producing assertion" という名前の2つの子ステップを持つことに気が付くでしょう。
+関数呼び出しの検証は、関数の事前条件の _消費_ (_consuming_) とその後の関数の事後条件の _生成_ (_producing_) から成ります。
+事前条件と事後条件は _表明_ (_assertions_)、すなわち通常の論理に加えてヒープチャンクを含むような式です。
+事前条件の消費は、その関数から要求されたヒープチャンクをその関数に渡すことを意味し、従ってそれらをシンボリックヒープから削除します。
+事後条件の生成は、その関数が返るときにその関数から提示されたヒープチャンクを受け取ることを意味し、従ってそれらをンボリックヒープに追加します。
+
+![図3. 関数呼び出しをステップ実行したとき、VeriFast は (下のペインに緑色で) 呼び出し元と (上のペインに黄色で) 呼び出された契約の両方を表示](img/fig3.png)
+
+"Consuming assertion" ステップを選択すると VeriFast ウィンドウのレイアントが変わります (上図を見てください)。
+ソースコードペインが2つの部分に分かれます。
+上の部分は呼び出された関数の契約を表示するのに使われ、下の部分は検査される関数を表示するのに使われます。
+(この例では呼び出される関数は検査される関数と近接しているので、上と下のパートは同じものが表示されます。)
+検査される呼び出しが緑色バックグラウンドで表示されます。
+消費/生成される契約は黄色バックグラウンドで表示されます。
+"Consuming assertion" ステップから "Producing assertion" ステップに移ると、"Consuming assertion" ステップがシンボリックヒープから `account_balance` チャンクを削除することに気が付くでしょう。
+ここでは概念上、`main` 関数が `account_set_balance` 関数の返りを待つ間、それはこの関数によって使われます。
+関数 `account_set_balance` の事後条件はヒープチャンクに言及していないので、"Producing assertion" ステップはシンボリックヒープに何も追加しません。
+
+ここでは VeriFast が `account_set_balance` がヒープチャンクをリークしたとエラーを出すのかは明確です:
+この関数は `account_balance` チャンクをその呼び出し元に返さないため、そのチャンクは失われ、そのフィールドは再びアクセスすることができないのです。
+これは通常プログラマの意図ではないので、VeriFast はこれをエラーをみなします;
+さらに、より多くのメモリ位置がリークしたら、そのプログラムはメモリ不足になるでしょう。
+
+このエラーを修正する方法も明確です:
+関数 `account_set_balance` の事後条件にこの関数が `account_balance` チャンクを呼び出し元に返すことを指定すべきです。
+
+```c
+void account_set_balance(struct account *myAccount, int newBalance)
+    //@ requires account_balance(myAccount, _);
+    //@ ensures account_balance(myAccount, newBalance);
+{
+    myAccount->balance = newBalance;
+}
+```
+
+これはリークエラーメッセージと _free_ 命令文のエラーを取り除きます。
+これでこのプログラムは検査されました。
+フィールドの値が属する位置で `newBalance` パラメータを参照していることに注意してください;
+これは関数が返る時のこのフィールドの値がこのパラメータの値と等しいことを意味しています。
+
+__練習問題 1__
+`account` 構造体インスタンスの生成と破棄を関数に切り出してください。
+その生成関数は `balance` をゼロで初期化すべきです。
+注意: 表明で複数のヒープチャンクを使うには、それらを論理積 `&*&` (アンパサンド-スター-アンパサンド) を使って区切ってください。
+また事後条件では関数の返り値を `result` の名前で参照できます。
+
+## 5. パターン
 
 xxx
