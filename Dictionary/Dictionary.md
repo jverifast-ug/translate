@@ -10,6 +10,10 @@
 
 "注釈"
 
+### Arithmetic overflow
+
+"算術オーバーフロー"
+
 ### Assertion
 
 "表明"
@@ -88,6 +92,10 @@
 ### Precondition
 
 "事前条件"
+
+### Predicate
+
+"述語"
 
 ### Producing
 

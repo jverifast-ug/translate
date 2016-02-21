@@ -122,7 +122,7 @@ VeriFast はこのエラーを次のように検出します:
 前の章の例からはじめます。
 今の時点ではこの例は唯一1つの関数から成ります: それは main 関数です。
 別の関数を追加してみましょう。
-`account` 構造体インスタンスのアドレスと整数の総計を取り、その総計を構造体インスタンスの `balance` フィールドに割り当てる関数 `account_set_balance` を書きます
+`account` 構造体インスタンスのアドレスと整数の金額を取り、その金額を構造体インスタンスの `balance` フィールドに割り当てる関数 `account_set_balance` を書きます
 そして main 関数のフィールド割り当てをこの関数呼び出しで置き換えます。
 ここで次のプログラムを考えましょう:
 
@@ -313,5 +313,72 @@ int account_get_balance(struct account *myAccount)
 ```
 
 事後条件のフィールド値の位置で使うことで、名前 `theBalance` はその関数が `balance` フィールドの値を修正しないことを指定するのにも使えることに注意してください。
+
+これでこのプログラムは検査されました。
+実際、__Run to cursor__ コマンドを使って assert 命令文まで実行すると、Assumptions ペインに仮定 `(= b 5)` が現われるでしょう。
+ステップを戻すと、関数 `account_get_balance` の事後条件における等式条件が生成されたときに、その仮定が追加されたことが分かるでしょう。
+さらステップを戻すと、フィールドチャンクの表明が消費されたときに、上の Locals ペインに変数 `theBalance` が追加され、その値が 5 に束縛されたことが分かるでしょう。
+シンボリックヒープに値が見つかったので、それは値 5 に束縛されます。
+関数呼び出しを検査するとき、上の Locals ペインはその呼び出される関数の契約を評価するのに使われます。
+初期状態ではそれはその関数のパラメータからその呼び出しで指定された引数への束縛を含んでいます;
+追加の束縛は契約にパターンを記述すると現われます。
+仮定 `(= b 5)` は、上の Locals ペインで示されたシンボリックストアで、等式条件 `result == theBalance` を評価して得られる論理式です。
+
+__練習問題 2__
+与えられた金額を `account` に預ける関数を追加してください。
+次の `main` 関数を検証してください。
+
+```c
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    struct account *myAccount = create_account();
+    account_set_balance(myAccount, 5);
+    account_deposit(myAccount, 10);
+    int b = account_get_balance(myAccount);
+    assert(b == 15);
+    account_dispose(myAccount);
+    return 0;
+}
+```
+
+注意: VeriFast は算術オーバーフローをチェックします。
+ここでは、__Verify__ メニューでこのチェックを無効にしてください。
+
+__練習問題 3__
+`account` の最小 `balance` を指定するために、構造体 `account` にフィールド `limit` を追加してください。
+(これは一般にゼロもしくは負の数になります。)
+この `limit` は生成時に指定します。
+さらに与えられた金額を `account` から引き出す関数を追加してください。
+この関数は `limit` を配慮しなければなりません;
+要求された金額の引き出しが `limit` に違反したら、`limit` の違反を除いて引き出し可能な最大の金額が引き出されます。
+その関数は実際に引き出された金額をその返り値として返します。
+C言語の条件式 `condition ? value1 : value2` を使うことになるでしょう。
+関数 `account_set_balance` を削除してください。
+フィールドチャンク `myAccount->balance |-> value` の略記を使ってください。
+次の `main` 関数を検査してください。
+
+```c
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    struct account *myAccount = create_account(-100);
+    account_deposit(myAccount, 200);
+    int w1 = account_withdraw(myAccount, 50);
+    assert(w1 == 50);
+    int b1 = account_get_balance(myAccount);
+    assert(b1 == 150);
+    int w2 = account_withdraw(myAccount, 300);
+    assert(w2 == 250);
+    int b2 = account_get_balance(myAccount);
+    assert(b2 == -100);
+    account_dispose(myAccount);
+    return 0;
+}
+```
+
+6. 述語
 
 xxx
