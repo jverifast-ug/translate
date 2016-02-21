@@ -62,6 +62,11 @@
 ## J
 ## K
 ## L
+
+### Logical symbol
+
+"論理記号"
+
 ## M
 
 ### Modular symbolic execution
@@ -95,6 +100,10 @@
 ## Q
 ## R
 ## S
+
+### Separating conjunction
+
+"分離論理積"
 
 ### Soundness
 

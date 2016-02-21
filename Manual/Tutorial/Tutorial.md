@@ -258,9 +258,60 @@ void account_set_balance(struct account *myAccount, int newBalance)
 __練習問題 1__
 `account` 構造体インスタンスの生成と破棄を関数に切り出してください。
 その生成関数は `balance` をゼロで初期化すべきです。
-注意: 表明で複数のヒープチャンクを使うには、それらを論理積 `&*&` (アンパサンド-スター-アンパサンド) を使って区切ってください。
+注意: 表明で複数のヒープチャンクを使うには、それらを分離論理積 `&*&` (アンパサンド-スター-アンパサンド) を使って区切ってください。
 また事後条件では関数の返り値を `result` の名前で参照できます。
 
 ## 5. パターン
+
+現在の `balance` を返す関数を追加し、それを main 関数で使ってみましょう。
+次のコードが最初の試みです:
+
+```c
+int account_get_balance(struct account *myAccount)
+    //@ requires account_balance(myAccount, _);
+    //@ ensures account_balance(myAccount, _);
+{
+    return myAccount->balance;
+}
+
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    struct account *myAccount = create_account();
+    account_set_balance(myAccount, 5);
+    int b = account_get_balance(myAccount);
+    assert(b == 5);
+    account_dispose(myAccount);
+    return 0;
+}
+```
+
+新しい関数の検査は成功しますが、VeriFast は条件 `b == 5` を証明できないというエラーを返します。
+VeriFast は条件のチェックを要求されると、はじめに、それぞれの変数をシンボリック値で置換することで、その条件を論理式に変換します。
+Locals ペインに表示されたシンボリックストアに、変数 `b` のシンボリック値が論理記号 `b` であることを見つけることができます。
+そのため、結果の論理式は `b == 5` です。
+それから VeriFast は _パスコンディション_ 、すなわち Assumptions ペインに表示されている式、からこの式を導出しようと試みます。
+この場合唯一の仮定は __true__ なので、VeriFast はこの条件を証明できないのです。
+
+この問題は関数 `account_get_balance` 事後条件はこの関数の返り値を指定していないことによります。
+その返り値が関数が呼ばれたときの `balance` フィールドの値と等しいと言明していないのです。
+これを修正するために、関数が呼ばれたときの `balance` フィールドの値に名前を割り当てられるようにする必要があります。
+これは事前条件のアンダースコアを _パターン_ `?theBalance` で置換することで可能です。
+これで名前 `theBalance` は `balance` フィールドの値に束縛されるようになります。
+等価条件で使う返り値指定するために、事後条件でこの名前を使うことができます。
+関数の返り値は関数のその関数の事後条件で `result` の名前で使えます。
+表明における論理条件とヒープチャンクは分離論理積 `&*&` を使って区切ってください。
+
+```c
+int account_get_balance(struct account *myAccount)
+    //@ requires account_balance(myAccount, ?theBalance);
+    //@ ensures account_balance(myAccount, theBalance) &*& result == theBalance;
+{
+    return myAccount->balance;
+}
+```
+
+事後条件のフィールド値の位置で使うことで、名前 `theBalance` はその関数が `balance` フィールドの値を修正しないことを指定するのにも使えることに注意してください。
 
 xxx
