@@ -379,6 +379,76 @@ int main()
 }
 ```
 
-6. 述語
+## 6. 述語
+
+練習問題3で得られたプログラムからはじめましょう。
+先の契約が成長するのを観察しました。
+さらに `account` の "クラス" と、異なるモジュールである main 関数を考えると、`account` モジュールの内部実装詳細が main 関数に露出されてしまっています。
+関数の契約に `account` 構造体インスタンスを表現する _述語_ (_predicate_) を導入することで、情報の隠蔽とより簡潔な契約を実現できます。
+
+```c
+/*@
+predicate account_pred(struct account *myAccount, int theLimit, int theBalance) =
+    myAccount->limit |-> theLimit &*& myAccount->balance |-> theBalance
+    &*& malloc_block_account(myAccount);
+@*/
+```
+
+述語は名前の付いたパラメータ化された表明です。
+さらにそれはヒープチャンクの新しい型を導入します。
+`account_pred` ヒープチャンクは、`account_limit` ヒープチャンク、`account_balance` ヒープチャンクと `malloc_block_account` ヒープチャンクを1つにまとめています。
+
+この述語を使って、引き出し関数の契約を書き換えてみましょう。
+最初の試みは次のようになります:
+
+```c
+void account_deposit(struct account *myAccount, int amount)
+    //@ requires account_pred(myAccount, ?limit, ?balance) &*& 0 <= amount;
+    //@ ensures account_pred(myAccount, limit, balance + amount);
+{
+    myAccount->balance += amount;
+}
+```
+
+この関数は検査できません。
+シンボリックヒープに `account_balance` ヒープチャンクがないので、`balance` フィールドの更新は検査できないのです。
+そこには `account_pred` ヒープチャンクしかありません。
+`account_pred` ヒープチャンクは `account_balance` ヒープチャンクをカプセル化していますが、VeriFast は述語 `account_pred` を自動的に取り出しません。
+__open__ ゴースト命令文を挿入して、VeriFast に述語ヒープチャンクを取り出すよう指示する必要があります:
+
+```c
+void account_deposit(struct account *myAccount, int amount)
+    //@ requires account_pred(myAccount, ?limit, ?balance) &*& 0 <= amount;
+    //@ ensures account_pred(myAccount, limit, balance + amount);
+{
+    //@ open account_pred(myAccount, limit, balance);
+    myAccount->balance += amount;
+}
+```
+
+これでこの割り当ては検査されましたが、VeriFast は事後条件で停止します。
+それは関数の呼び出し元へ返す `account_pred` ヒープチャンクが見つからないと訴えています。
+`account_pred` チャンクを構成するチャンクはシンボリックヒープ中に存在し、VeriFast は自動的にそれらを `account_pred` チャンクにまとめません。
+__close__ ゴースト命令文を使ってそれを行なうよう VeriFast に指示する必要があります:
+
+```c
+void account_deposit(struct account *myAccount, int amount)
+    //@ requires account_pred(myAccount, ?limit, ?balance) &*& 0 <= amount;
+    //@ ensures account_pred(myAccount, limit, balance + amount);
+{
+    //@ open account_pred(myAccount, limit, balance);
+    myAccount->balance += amount;
+    //@ close account_pred(myAccount, limit, balance + amount);
+}
+```
+
+これでこの関数は検査されます。
+けれども、`account_deposit` 呼び出しが `account_pred` ヒープチャンクを期待しているため、main 関数は検査できません。
+
+__練習問題 4__
+述語 `account_pred` を使って残りの契約を書き換えてください。
+必要に応じて命令文 __open__ と __close__ を挿入してください。
+
+## 7. 再帰的な述語
 
 xxx
