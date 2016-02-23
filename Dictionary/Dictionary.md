@@ -2,6 +2,10 @@
 
 ## A
 
+### Activation record
+
+"スタックフレーム"
+
 ### Allocate
 
 "確保する"
@@ -80,6 +84,10 @@
 ### Illegal memory access
 
 "不正なメモリアクセス"
+
+### Invariant
+
+"不変条件"
 
 ## J
 ## K
