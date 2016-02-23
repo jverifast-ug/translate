@@ -23,7 +23,16 @@
 "仮定"
 
 ## B
+
+### Branch
+
+"分岐"
+
 ## C
+
+### Case split
+
+"場合分け"
 
 ### Chunk
 
@@ -32,6 +41,10 @@
 ### Consuming
 
 "消費"
+
+### Contract
+
+"契約"
 
 ## D
 

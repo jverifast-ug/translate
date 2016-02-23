@@ -451,4 +451,114 @@ __練習問題 4__
 
 ## 7. 再帰的な述語
 
+前章では、簡潔さと情報の隠蔽のために、述語を導入しました。
+けれども、述語に対してさらなる切実な必要性があります:
+それは VeriFast でサイズに再現のないデータ構造を表現する唯一の方法なのです。
+実際、述語がない場合、表明で表現されるメモリ位置の数はその表明の長さに比例します。
+この制限は再帰的な述語、すなわち自分自身を呼び出す述語、を使うことで克服できます。
+
+__練習問題 5__
+片方向リストデータ構造を使って整数のスタックを実装してください:
+関数 `create_stack`, `stack_push`, `stack_pop`, `stack_dispose` を実装してください。
+`stack_pop` の事前条件を指定できるようにするために、述語はスタック中の要素の数を指定するパラメータを持つ必要があります。
+関数 `stack_dispose` は空のスタックにのみ呼び出すことができます。
+スタックの中身を指定しないでください; これまで見てきた注釈ではそれは不可能です。
+条件文の表明 `condition ? assertion1 : assertion2` を使う必要があります。
+注意: __open__ 命令文中でのフィールドのデリファレンスを VeriFast は許しません。
+__open__ 命令文中でフィールドの値を使いたい場合、はじめにその値をローカル変数に保存しなければなりません。
+次の main 関数を検査してください:
+
+```c
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    struct stack *s = create_stack();
+    stack_push(s, 10);
+    stack_push(s, 20);
+    stack_pop(s);
+    stack_pop(s);
+    stack_dispose(s);
+    return 0;
+}
+```
+
+ここで、練習問題5の答を拡張して `stack_is_empty` 関数を作ってみましょう。
+述語定義を思い出してみましょう:
+
+```c
+predicate nodes(struct node *node, int count) =
+    node == 0 ?
+        count == 0
+    :
+        0 < count
+        &*& node->next |-> ?next &*& node->value |-> ?value
+        &*& malloc_block_node(node) &*& nodes(next, count - 1);
+
+predicate stack(struct stack *stack, int count) =
+    stack->head |-> ?head &*& malloc_block_stack(stack) &*& 0 <= count &*& nodes(head, count);
+```
+
+次は `stack_is_empty` 関数の最初の試みです:
+
+```c
+bool stack_is_empty(struct stack *stack)
+    //@ requires stack(stack, ?count);
+    //@ ensures stack(stack, count) &*& result == (count == 0);
+{
+    //@ open stack(stack, count);
+    bool result = stack->head == 0;
+    //@ close stack(stack, count);
+    return result;
+}
+```
+
+この関数は検査できません。
+VeriFast は事後条件の条件式 `result == (count == 0)` を証明できないとエラーを吐きます。
+実際、Assumptions ペインの仮定を見てみると、それらの仮定はこの条件を証明するのに不十分です。
+この問題は head ポインタの値と nodes の数との関係が述語 `nodes` の中に隠されてしまっていることです。
+その情報を仮定に追加するために、その述語を開く必要があります。
+もちろん、述語 `stack` を閉じられるように、その後その述語を再び閉じなければなりません。
+
+```c
+bool stack_is_empty(struct stack *stack)
+    //@ requires stack(stack, ?count);
+    //@ ensures stack(stack, count) &*& result == (count == 0);
+{
+    //@ open stack(stack, count);
+    struct node *head = stack->head;
+    //@ open nodes(head, count);
+    bool result = stack->head == 0;
+    //@ close nodes(head, count);
+    //@ close stack(stack, count);
+    return result;
+}
+```
+
+これでこの関数は検査できます。
+正確に起きることは次のようなものです。
+VeriFast が open 命令文を実行すると、述語 `nodes` の本体中に条件表明を生成します。
+これは _場合分け_ (_case split_) の実行を引き起こします。
+これはその関数の残りが二度検証されることを意味しています:
+一度は条件が真である仮定において、もう一度は条件が偽である仮定においてです。
+別の言い方をすると、その実行パスは2つの実行パス、もしくは _分岐_ (_branches_) に分かれるのです。
+これで両方の分岐において、事後条件はたやすく証明できます:
+1番目の分岐にでは仮定 `head == 0` と `count == 0` を得て、2番目の分岐では `head != 0` と `0 < count` を得ます。
+
+__練習問題 6__
+関数 `stack_dispose` を修正して、スタックが要素を含んでいても動くようにしてください。
+再帰的なヘルパー関数を使ってください。
+(警告: VeriFast は停止性を検証しません;
+無限再帰や無限ループをエラーにしないのです。
+それはあなた自身の責務です。)
+
+__if__ 命令文を検証するとき、VeriFast は場合分けを行なうことに注意してください。
+
+__練習問題 7__
+スタックの要素の値の合計を返す関数 `stack_get_sum` を追加してください。
+再帰的なヘルパー関数を使ってください。
+(まだどうやってするのか分からないので) 契約は返り値を指定する必要はありません。
+
+## 8. ループ
+
 xxx
