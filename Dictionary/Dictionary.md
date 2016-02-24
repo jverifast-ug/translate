@@ -84,6 +84,10 @@
 
 ## H
 
+### Head
+
+"ヘッド"
+
 ### Heap chunk
 
 "ヒープチャンク"
@@ -94,9 +98,13 @@
 
 "不正なメモリアクセス"
 
-### Inductive
+### Inductive datatype
 
-"帰納的な"
+"帰納データ型"
+
+### Inductive parameter
+
+"帰納パラメータ"
 
 ### Invariant
 
@@ -105,6 +113,10 @@
 ## J
 ## K
 ## L
+
+### Lemma
+
+"補題"
 
 ### Logical symbol
 
@@ -185,6 +197,11 @@
 "シンボリック値"
 
 ## T
+
+### Tail
+
+"テイル"
+
 ## U
 
 ### Unsoundness

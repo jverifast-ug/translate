@@ -644,10 +644,10 @@ __while__ ループを使ってください。
 これはしばしば関数パラメータの値を上書きしてはならないことを意味しています。
 なぜなら一般にループ不変条件では元の値が必要になるからです。
 
-## 9. 帰納的なデータ型
+## 9. 帰納データ型
 
 (練習問題5の回答である) 最初に注釈したスタック実装に戻ってみましょう。
-この注釈は関数の正しさを十分に明記していません。
+この注釈は関数的な正しさを十分に明記していません。
 特に、関数 `stack_pop` の契約はその関数の返り値を指定してません。
 結果としてこれらの注釈を使うと、次のような main 関数を検証できません:
 
@@ -671,7 +671,7 @@ int main()
 この main 関数を検証するためには、スタック中の要素の数を単に追跡する代わりに、要素の値も同様に追跡する必要があります。
 別の言い方をすると、
 スタックに現状保存されている要素の正確な列を追跡する必要があるのです。
-_帰納的なデータ型_ (_inductive datatype_) `ints` を使うことで、整数の列を表現できます:
+_帰納データ型_ (_inductive datatype_) `ints` を使うことで、整数の列を表現できます:
 
 ```
 inductive ints = ints_nil | ints_cons(int, ints);
@@ -686,11 +686,77 @@ inductive ints = ints_nil | ints_cons(int, ints);
 ints_cons(1, ints_cons(2, ints_cons(3, ints_nil)))
 ```
 
-__Exercise 9__
+__練習問題 9__
 `nodes` の `count` パラメータと述語 `stack` を型 `ints` の `values` パラメータで置き換えて、その述語本体を更新してください。
 さらに関数 `create_stack`, `stack_push`, `stack_dispose` を更新してください。
 ここでは `stack_pop` を気にしないでください。
 
 ## 10. 不動点関数
+
+どうやって関数 `stack_pop` に対する注釈を更新すべきでしょうか？
+事後条件と close 命令文で現在の列のテイルを参照する必要があります。
+さらにその返り値を指定するために、現在の列のヘッドを参照する必要があります。
+これは _不動点関数_ (_fixpoint functions_) を使うことで可能になります:
+
+```
+fixpoint int ints_head(ints values) {
+    switch (values) {
+        case ints_nil: return 0;
+        case ints_cons(value, values0): return value;
+    }
+}
+
+fixpoint ints ints_tail(ints values) {
+    switch (values) {
+        case ints_nil: return ints_nil;
+        case ints_cons(value, values0): return values0;
+    }
+}
+```
+
+switch 命令文を帰納データ型に使えることに注意してください。
+それぞれのコンストラクタに対して、きっちり1回の case が必要です。
+パラメータを取るコンストラクタに対する case では、指定されたパラメータ名がその値がコンストラクトされたときに使われた関連するコンストラクタ引数値に束縛されます。
+不動点関数の本体は (_帰納パラメータ_ (_inductive parameter_) と呼ばれる) 関数のパラメータの1つを持つ switch 命令文でなければなりません。
+さらに、それぞれの case 本体は return 命令文でなければなりません。
+
+通常のC言語関数と対照的に、不動点関数は注釈において使われる式で使うことができます。
+これは関数 `stack_pop` を新しい述語定義に適合させて、その返り値を指定するのに、`ints_head` と`ints_tail` 関数を使うことができることを意味しています。
+
+__練習問題 10__
+上記を試してください。
+
+これでスタック実装の関数的な正しさを明記でき、VeriFast は新しい main 関数を検証できます。
+
+__練習問題 11__
+与えられたスタックの要素の和を返すC言語関数 `stack_get_sum` を追加してください。
+その関数を再帰的なヘルパー関数 `nodes_get_sum` を使って実装してください。
+再帰的な不動点関数 `ints_sum` を使ってその新しいC言語関数を明記してください。
+__Verify__ メニューを確認して、算術オーバーフローを無効にしてください。
+次の main 関数を検証してください:
+
+```c
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    struct stack *s = create_stack();
+    stack_push(s, 10);
+    stack_push(s, 20);
+    int sum = stack_get_sum(s);
+    assert(sum == 30);
+    int result1 = stack_pop(s);
+    assert(result1 == 20);
+    int result2 = stack_pop(s);
+    assert(result2 == 10);
+    stack_dispose(s);
+    return 0;
+}
+```
+
+VeriFast は再帰的な不動点関数をサポートしています。
+VeriFast は直接の再帰のみを許可し、再帰呼び出しの帰納パラメータの値がその呼び出し元の帰納パラメータの値のコンストラクタ引数であることを要求することで、その不動点関数が常に停止することを強制します。
+
+## 11. 補題
 
 xxx
