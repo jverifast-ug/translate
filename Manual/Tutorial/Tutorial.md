@@ -646,4 +646,51 @@ __while__ ループを使ってください。
 
 ## 9. 帰納的なデータ型
 
+(練習問題5の回答である) 最初に注釈したスタック実装に戻ってみましょう。
+この注釈は関数の正しさを十分に明記していません。
+特に、関数 `stack_pop` の契約はその関数の返り値を指定してません。
+結果としてこれらの注釈を使うと、次のような main 関数を検証できません:
+
+```c
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    struct stack *s = create_stack();
+    stack_push(s, 10);
+    stack_push(s, 20);
+    int result1 = stack_pop(s);
+    assert(result1 == 20);
+    int result2 = stack_pop(s);
+    assert(result2 == 10);
+    stack_dispose(s);
+    return 0;
+}
+```
+
+この main 関数を検証するためには、スタック中の要素の数を単に追跡する代わりに、要素の値も同様に追跡する必要があります。
+別の言い方をすると、
+スタックに現状保存されている要素の正確な列を追跡する必要があるのです。
+_帰納的なデータ型_ (_inductive datatype_) `ints` を使うことで、整数の列を表現できます:
+
+```
+inductive ints = ints_nil | ints_cons(int, ints);
+```
+
+この宣言は2つの _コンストラクタ_ (_constructors_) `ints_nil` と `ints_cons` を共なう型 `ints` を宣言しています。
+`ints_nil` は空の列を表わします。
+`ints_cons` は _ヘッド_ (最初の要素) と _テイル_ (残りの要素) で与えられた空でない列をコンストラクトします。
+例えば、列 1,2,3 は次のように書けます:
+
+```
+ints_cons(1, ints_cons(2, ints_cons(3, ints_nil)))
+```
+
+__Exercise 9__
+`nodes` の `count` パラメータと述語 `stack` を型 `ints` の `values` パラメータで置き換えて、その述語本体を更新してください。
+さらに関数 `create_stack`, `stack_push`, `stack_dispose` を更新してください。
+ここでは `stack_pop` を気にしないでください。
+
+## 10. 不動点関数
+
 xxx

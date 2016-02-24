@@ -72,6 +72,10 @@
 
 "事実"
 
+### Fixpoint function
+
+"不動点関数"
+
 ## G
 
 ### Ghost
