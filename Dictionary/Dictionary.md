@@ -61,6 +61,11 @@
 "解放する"
 
 ## E
+
+### Executing statement
+
+"命令文実行"
+
 ## F
 
 ### Fact
@@ -84,6 +89,10 @@
 ### Illegal memory access
 
 "不正なメモリアクセス"
+
+### Inductive
+
+"帰納的な"
 
 ### Invariant
 
