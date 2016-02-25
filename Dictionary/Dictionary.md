@@ -118,6 +118,14 @@
 
 "補題"
 
+### Linked list segment
+
+"連結リストセグメント"
+
+### List segment
+
+"リストセグメント"
+
 ### Logical symbol
 
 "論理記号"
@@ -162,7 +170,7 @@
 
 ### Separating conjunction
 
-"分離論理積"
+"分離積"
 
 ### Soundness
 
