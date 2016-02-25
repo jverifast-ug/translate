@@ -826,7 +826,7 @@ VeriFast は3種類目の関数 _補題関数_ (_lemma functions_) をサポー�
 この関数は通常のC言語関数に似ていますが、この関数はフィールド割り当てや通常の関数呼び出しを行なわず、必ず停止します。
 その関数の呼び出しは実行時の作用がありません。
 この関数の目的はなんらかのヒープチャンクを等価なヒープチャンクの集合、すなわち同じ実メモリの値を表現する異なるヒープチャンクに変換することです。
-不動点関数と対照的に、この関数は式の中からではなく、分離呼び出し命令文からのみ呼び出されます。
+不動点関数と対照的に、この関数は式の中からではなく、別の呼び出し命令文からのみ呼び出されます。
 
 VeriFast は次のように直接の再帰のみ許可し、それぞれの再帰呼び出しをチェックすることで、補題関数の停止をチェックします:
 最初に、もし再帰呼び出しの事前条件を消費した後シンボリックヒープにフィールドチャンクが残っていたら、その呼び出しは許可されます。
@@ -921,5 +921,92 @@ lemma void lseg_add_lemma(struct node *first)
     close lseg(first, next, count + 1);
 }
 ```
+
+VeriFast は、`first` と `last` が等しいパスで、最後の close 操作をしようとしてエラーを吐きます。
+`first` と `next` が等しいことを仮定してしまい、`count + 1` とゼロが等しいことを証明できません。
+`first` は常にスタックの1つの node を指し、`next` は別の node を指すか 0 に等しいので、このシナリオでは `first` と `next` は異なります。
+けれども、今回の補題関数の事前条件はこれを表わしていません。
+この情報を含めるために、同様に `next` から 0 へのリストセグメントを要求する必要があります。
+最後の close 操作の前にこのリストセグメントを開いて閉じることで、`first` と `next` が異なるという情報を得ることができます。
+具体的には、VeriFast があるフィールドチャンクを生成し、同じフィールドを表わす別のフィールドチャンクが既にシンボリックヒープ中に存在しても、そのフィールドチャンクが異なる構造体インスタンスに属することを示す仮定を追加します。
+
+次のような `lseg_add_lemma` と `stack_get_count` 関数が得られます:
+
+```c
+/*@
+lemma void lseg_add_lemma(struct node *first)
+    requires
+        lseg(first, ?last, ?count) &*& last != 0 &*& last->value |-> _ &*& last->next |-> ?next &*&
+        malloc_block_node(last) &*& lseg(next, 0, ?count0);
+    ensures lseg(first, next, count + 1) &*& lseg(next, 0, count0);
+{
+    open lseg(first, last, count);
+    if (first == last) {
+        close lseg(next, next, 0);
+    } else {
+        lseg_add_lemma(first->next);
+    }
+    open lseg(next, 0, count0);
+    close lseg(next, 0, count0);
+    close lseg(first, next, count + 1);
+}
+@*/
+
+int stack_get_count(struct stack *stack)
+    //@ requires stack(stack, ?count);
+    //@ ensures stack(stack, count) &*& result == count;
+{
+    //@ open stack(stack, count);
+    struct node *head = stack->head;
+    //@ nodes_to_lseg_lemma(head);
+    struct node *n = head;
+    int i = 0;
+    //@ close lseg(head, head, 0);
+    while (n != 0)
+        //@ invariant lseg(head, n, i) &*& lseg(n, 0, count - i);
+    {
+        //@ open lseg(n, 0, count - i);
+        n = n->next;
+        i++;
+        //@ lseg_add_lemma(head);
+    }
+    //@ open lseg(0, 0, _);
+    //@ lseg_to_nodes_lemma(head);
+    //@ close stack(stack, count);
+    return i;
+}
+```
+
+これで検証できました。
+
+__練習問題 13__
+次の関数を検証してください。
+追加の補題が必要になるでしょう。
+
+```c
+void stack_push_all(struct stack *stack, struct stack *other)
+    //@ requires stack(stack, ?count) &*& stack(other, ?count0);
+    //@ ensures stack(stack, count0 + count);
+{
+    struct node *head0 = other->head;
+    free(other);
+    struct node *n = head0;
+    if (n != 0) {
+        while (n->next != 0)
+        {
+            n = n->next;
+        }
+        n->next = stack->head;
+        stack->head = head0;
+    }
+}
+```
+
+__練習問題 14__
+インプレースで、すなわちメモリ確保せずにスタックを逆転する関数 `stack_reverse` を実装/明記/検証してください。
+(9章を見て) 関数的な正しさを検証してください。
+追加の不動点と補題を定義することになるでしょう。
+
+## 12. 関数ポインタ
 
 xxx
