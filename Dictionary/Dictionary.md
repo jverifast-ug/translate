@@ -156,6 +156,10 @@
 
 "述語"
 
+### Predicate family
+
+"述語族"
+
 ### Producing
 
 "生成"

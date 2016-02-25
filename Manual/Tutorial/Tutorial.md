@@ -1009,4 +1009,117 @@ __練習問題 14__
 
 ## 12. 関数ポインタ
 
+スタックを取って与えられた述語を満たさない要素を削除する関数を書いてみましょう:
+
+```c
+typedef bool int_predicate(int x);
+
+struct node *nodes_filter(struct node *n, int_predicate *p)
+    //@ requires nodes(n, _);
+    //@ ensures nodes(result, _);
+{
+    if (n == 0) {
+        return 0;
+    } else {
+        //@ open nodes(n, _);
+        bool keep = p(n->value);
+        if (keep) {
+            struct node *next = nodes_filter(n->next, p);
+            //@ open nodes(next, ?count);
+            //@ close nodes(next, count);
+            n->next = next;
+            //@ close nodes(n, count + 1);
+            return n;
+        } else {
+            struct node *next = n->next;
+            free(n);
+            struct node *result = nodes_filter(next, p);
+            return result;
+        }
+    }
+}
+
+void stack_filter(struct stack *stack, int_predicate *p)
+    //@ requires stack(stack, _);
+    //@ ensures stack(stack, _);
+{
+    //@ open stack(stack, _);
+    struct node *head = nodes_filter(stack->head, p);
+    //@ assert nodes(head, ?count);
+    stack->head = head;
+    //@ open nodes(head, count);
+    //@ close nodes(head, count);
+    //@ close stack(stack, count);
+}
+
+bool neq_20(int x)
+    //@ requires true;
+    //@ ensures true;
+{
+    return x != 20;
+}
+
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    struct stack *s = create_stack();
+    stack_push(s, 10);
+    stack_push(s, 20);
+    stack_push(s, 30);
+    stack_filter(s, neq_20);
+    stack_dispose(s);
+    return 0;
+}
+```
+
+このプログラムは検証できません。
+関数 `nodes_filter` 中での `p` の呼び出し検証するために使う契約を、VeriFast は知らないのです。
+VeriFast はそれぞれの関数が契約を持つことを要求します:
+
+```c
+typedef bool int_predicate(int x);
+    //@ requires true;
+    //@ ensures true;
+```
+
+けれども、これは十分ではありません。
+`p` は型 `int_predicate *` ですが、これはそのポインタが `int_predicate` 関数の型シグニチャと契約を共なう関数を指すことを保証していません。
+実際、どのような整数もポインタにキャストでき、どのようなポインタも関数ポインタにキャストできます。
+そのため、VeriFast は、プログラムで宣言したそれぞれの関数の型 `T` に対して純粋なブール関数 `is_T` を導入します。
+型 `T *` の関数ポインタ `p` の呼び出しを検証するとき、VeriFast は `is_T(p)` が真であることをチェックします。
+与えられた関数 `f` に対して事実 `is_T(f)` を生成するために、`f` のヘッダは関数の型の実装節を含まなければなりません:
+
+```c
+bool neq_20(int x) //@ : int_predicate
+    //@ requires true;
+    //@ ensures true;
+```
+
+さらにこれは VeriFast に、`neq_20` の契約が `int_predicate` の契約を包含することをチェックさせます。
+
+最後に、事実 `is_int_predicate` をクライアントから呼び出し先に渡します:
+
+```c
+struct node *nodes_filter(struct node *n, int_predicate *p)
+    //@ requires nodes(n, _) &*& is_int_predicate(p) == true;
+    //@ ensures nodes(result, _);
+
+void stack_filter(struct stack *stack, int_predicate *p)
+    //@ requires stack(stack, _) &*& is_int_predicate(p) == true;
+    //@ ensures stack(stack, _);
+```
+
+__練習問題 15__
+全てを統合してください。
+
+`stack_filter` 関数の注記は2つの意味で十分ではありません:
+1つ目は、その事前条件はどのようなヒープチャンクも要求しないので、`int_predicate` 関数はどのようなメモリ位置も読み出せないことです;
+例えば、それによって指定した値より大きい全ての要素をフィルタできないのです。
+これは15章での述語族を使うことで解決できます。
+2つ目は、少しの要素が削除されただけでも、この実装はそれぞれの next ポインタを再割り当てしてしまうことです。
+これは13章での参照によるパラメータを使うことで解決できます。
+
+## 13. 参照によるパラメータ
+
 xxx
