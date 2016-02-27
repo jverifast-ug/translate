@@ -1300,4 +1300,212 @@ void int_add(int *x_ptr, int *y_ptr)
 
 ## 15. 述語族
 
+12章の `stack_filter` 関数に戻りましょう。
+スタックから、与えられた値を全て削除したくなったとします。
+
+```c
+typedef bool int_predicate(void *data, int x);
+
+struct node *nodes_filter(struct node *n, int_predicate *p, void *data)
+{
+    if (n == 0) {
+        return 0;
+    } else {
+        bool keep = p(data, n->value);
+        if (keep) {
+            struct node *next = nodes_filter(n->next, p, data);
+            n->next = next;
+            return n;
+        } else {
+            struct node *next = n->next;
+            free(n);
+            struct node *result = nodes_filter(next, p, data);
+            return result;
+        }
+    }
+}
+
+void stack_filter(struct stack *stack, int_predicate *p, void *data)
+{
+    struct node *head = nodes_filter(stack->head, p, data);
+    stack->head = head;
+}
+
+struct neq_a_data {
+    int a;
+};
+
+bool neq_a(struct neq_a_data *data, int x)
+{
+    bool result = x != data->a;
+    return result;
+}
+
+int read_int();
+
+int main()
+{
+    struct stack *s = create_stack();
+    stack_push(s, 10);
+    stack_push(s, 20);
+    stack_push(s, 30);
+    int a = read_int();
+    struct neq_a_data *data = malloc(sizeof(struct neq_a_data));
+    if (data == 0) abort();
+    data->a = a;
+    stack_filter(s, neq_a, data);
+    free(data);
+    stack_dispose(s);
+    return 0;
+}
+```
+
+どうやってスタックモジュールを指定すればいいでしょうか？
+次はその試みです:
+
+```c
+//@ predicate int_predicate_data(void *data) = ??
+
+typedef bool int_predicate(void *data, int x);
+    //@ requires int_predicate_data(data);
+    //@ ensures int_predicate_data(data);
+
+struct node *nodes_filter(struct node *n, int_predicate *p, void *data)
+    //@ requires nodes(n, _) &*& is_int_predicate(p) == true &*& int_predicate_data(data);
+    //@ ensures nodes(result, _) &*& int_predicate_data(data);
+{ ... }
+
+void stack_filter(struct stack *stack, int_predicate *p, void *data)
+    //@ requires stack(stack, _) &*& is_int_predicate(p) == true &*& int_predicate_data(data);
+    //@ ensures stack(stack, _) &*& int_predicate_data(data);
+{ ... }
+```
+
+問題は述語 `int_predicate_data` の定義です。
+`data` ポインタが指すデータ構造を予測するようなスタックモジュールを表わす方法がありません。
+述語の定義を選択することができれば、たやすく検証できます:
+
+```c
+//@ predicate int_predicate_data(void *data) = neq_a_data_a(data, _);
+
+bool neq_a(struct neq_a_data *data, int x) //@ : int_predicate
+    //@ requires int_predicate_data(data);
+    //@ ensures int_predicate_data(data);
+{
+    //@ open int_predicate_data(data);
+    bool result = x != data->a;
+    //@ close int_predicate_data(data);
+    return result;
+}
+
+int read_int();
+    //@ requires true;
+    //@ ensures true;
+
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    struct stack *s = create_stack();
+    stack_push(s, 10);
+    stack_push(s, 20);
+    stack_push(s, 30);
+    int a = read_int();
+    struct neq_a_data *data = malloc(sizeof(struct neq_a_data));
+    if (data == 0) abort();
+    data->a = a;
+    //@ close int_predicate_data(data);
+    stack_filter(s, neq_a, data);
+    //@ open int_predicate_data(data);
+    free(data);
+    stack_dispose(s);
+    return 0;
+}
+```
+
+けれども、これが実現可能でないことは明確です。
+結局、スタックモジュールは1つ以上のクライアントがあるので、同じ述語を表わす複数の定義を持つことになります。
+具体的には、型 `int_predicate` のそれぞれの関数を表わす `int_predicate_data` の1つの定義を持つことになります。
+もし型 `int_predicate` で与えられた関数に関連した `int_predicate_data` の定義を具体的に指すことができれば、この問題は解決できます。
+これは正確には _述語族_ (_predicate families_) で可能になります。
+述語族は通常の述語に似ていますが、それぞれの定義が異なる _インデックス_ (_index_) と関連付けられた複数の定義を持つことができる点で異なります。
+述語族のインデックスは関数ポインタでなけれなりません。
+
+述語族を適用すると、スタックモジュールを表わす次のような定義が得られます:
+
+```c
+//@ predicate_family int_predicate_data(void *p)(void *data);
+
+typedef bool int_predicate(void *data, int x);
+    ///@ requires int_predicate_data(this)(data);
+    ///@ ensures int_predicate_data(this)(data);
+
+struct node *nodes_filter(struct node *n, int_predicate *p, void *data)
+    ///@ requires nodes(n, _) &*& is_int_predicate(p) == true &*& int_predicate_data(p)(data);
+    ///@ ensures nodes(result, _) &*& int_predicate_data(p)(data);
+
+void stack_filter(struct stack *stack, int_predicate *p, void *data)
+    //@ requires stack(stack, _) &*& is_int_predicate(p) == true &*& int_predicate_data(p)(data);
+    //@ ensures stack(stack, _) &*& int_predicate_data(p)(data);
+```
+
+関数の型の契約中で、関数+ポインタを `this` で参照できることに注意してください。
+
+クライアントは次のように定義できます:
+
+```c
+struct neq_a_data {
+    int a;
+};
+
+/*@
+predicate_family_instance int_predicate_data(neq_a)(void *data) =
+    neq_a_data_a(data, _);
+@*/
+
+bool neq_a(struct neq_a_data *data, int x) //@ : int_predicate
+    //@ requires int_predicate_data(neq_a)(data);
+    //@ ensures int_predicate_data(neq_a)(data);
+{
+    //@ open int_predicate_data(neq_a)(data);
+    bool result = x != data->a;
+    //@ close int_predicate_data(neq_a)(data);
+    return result;
+}
+
+int read_int();
+    //@ requires true;
+    //@ ensures true;
+
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    struct stack *s = create_stack();
+    stack_push(s, 10);
+    stack_push(s, 20);
+    stack_push(s, 30);
+    int a = read_int();
+    struct neq_a_data *data = malloc(sizeof(struct neq_a_data));
+    if (data == 0) abort();
+    data->a = a;
+    //@ close int_predicate_data(neq_a)(data);
+    stack_filter(s, neq_a, data);
+    //@ open int_predicate_data(neq_a)(data);
+    free(data);
+    stack_dispose(s);
+    return 0;
+}
+```
+
+__練習問題 17__
+int を取り int を返す関数 f を取る関数 `stack_map` を追加してください。
+`stack_map` はスタックのそれぞれの要素の値を、その値に f を適用した結果で置き換えます。
+値 10, 20, 30 を含むスタックを作るクライアントプログラムを書いてください;
+それからユーザから値を読み;
+そして `stack_map` を使ってそのスタックのそれぞれの要素にその値を加えてください。
+完成したプログラムのメモリ安全性を検証してください。
+
+## 16. ジェネリクス
+
 xxx
