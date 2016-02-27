@@ -1122,4 +1122,88 @@ __練習問題 15__
 
 ## 13. 参照によるパラメータ
 
+ここでは12章での `stack_filter` 関数の別実装を見てみます。
+それぞれの next ポインタを再割り当てする代わりに、ポインタを next ポインタに渡して、変化したポインタのみ再割り当てします。
+
+```c
+void nodes_filter(struct node **n, int_predicate *p) {
+    if (*n != 0) {
+        bool keep = p((*n)->value);
+        if (keep) {
+            nodes_filter(&(*n)->next, p);
+        } else {
+            struct node *next = (*n)->next;
+            free(*n);
+            *n = next;
+            nodes_filter(n, p);
+        }
+    }
+}
+
+void stack_filter(struct stack *stack, int_predicate *p) {
+    nodes_filter(&stack->head, p);
+}
+```
+
+このプログラムでは、参照を用いて現在の node へのポインタを関数 `nodes_filter` に渡しています。
+関数 `nodes_filter` 中では、`n` をデリファレンスして現在の node へのポインタを得ます。
+VeriFast はポインタのデリファレンスをフィールドのデリファレンスと同じように扱います。
+けれども、シンボリックヒープにフィールドチャンクが見つかる代わりに、それは一般的な変数チャンクに見つかります;
+この場合、デリファレンスされるポインタはポインタを保持する変数を指しているので、それは `pointer` チャンクであると期待されます。
+述語 `pointer` は `prelude.h` で次のように定義されています:
+
+```
+predicate pointer(void **pp; void *p);
+```
+
+(後にセミコロンの意味について議論します;ここでは、単にコンマのように読んでみてください。)
+フィールドチャンクの場合と同様に、1番目の引数は変数のアドレスで、2番目の引数はその変数の現在の値です。
+
+次は関数 `nodes_filter` に対する正当な契約です:
+
+```c
+void nodes_filter(struct node **n, int_predicate *p)
+    //@ requires pointer(n, ?node) &*& nodes(node, _) &*& is_int_predicate(p) == true;
+    //@ ensures pointer(n, ?node0) &*& nodes(node0, _);
+```
+
+`stack_filter` から `nodes_filter` を呼び出しできるようにするために、ポインタチャンクを生成する必要があります。
+具体的には、`stack_head` チャンクをポインタチャンクに変換する必要があります。
+これは単に `stack_head` チャンクを開くだけです。
+そのポインタチャンクを `stack_head` チャンクに戻すには、再びその `stack_head` チャンクを閉じるだけです:
+
+```c
+void stack_filter(struct stack *stack, int_predicate *p)
+    //@ requires stack(stack, _) &*& is_int_predicate(p) == true;
+    //@ ensures stack(stack, _);
+{
+    //@ open stack(stack, _);
+    //@ open stack_head(stack, _);
+    nodes_filter(&stack->head, p);
+    //@ assert pointer(&stack->head, ?head) &*& nodes(head, ?count);
+    //@ close stack_head(stack, head);
+    //@ open nodes(head, count);
+    //@ close nodes(head, count);
+    //@ close stack(stack, count);
+}
+```
+
+close 命令文ではパターンを使えないので、`stack_head` チャンクを閉じる前に head フィールドの値を変数 `head` で束縛する必要があることに注意してください。
+
+__練習問題 16__
+関数 `nodes_filter` を検証してください。
+
+注意:
+現在 VeriFast は、ポインタへのポインタ、整数へのポインタ、文字へのポインタのためにデリファレンス演算子 (*) をサポートしています。
+後者の場合、`prelude.h` で定義された次の述語が使えます:
+
+```
+predicate integer(int *p; int v);
+predicate character(char *p; char v);
+```
+
+まだ VeriFast はローカル変数のアドレスの受け取りをサポートしていません。
+
+## 14. 算術オーバーフロー
+
 xxx
