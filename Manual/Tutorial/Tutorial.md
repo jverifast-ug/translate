@@ -1206,4 +1206,98 @@ predicate character(char *p; char v);
 
 ## 14. 算術オーバーフロー
 
+次のようなプログラムを考えます:
+
+```c
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    int x = 2000000000 + 2000000000;
+    assert(0 <= x);
+    return 0;
+}
+```
+
+このプログラムの挙動はC言語で一意に定義されません。
+具体的には、__int__ 型は有限範囲の整数のみをサポートしていて、さらにC言語はこの範囲の限界を指定していないのです。
+この限界は _実装依存_ です。
+C言語は型 __int__ の最小値と最大値をマクロ `INT_MIN` と `INT_MAX` によって指定しています。
+それぞれ `INT_MIN` は -32767 以下、`INT_MAX` は 32767 以上です。
+さらに、もし型 __int__ の算術演算の結果、型 __int__ の限界の範囲外の値を得たら何が起きるかをC言語は指定していません。
+
+VeriFast は任意のC言語実装に準拠するか (もしくは任意の規格に準拠するか) を気にしません。
+具体的には `INT_MIN` が −2^31 に等しく、`INT_MAX` が 2^31 − 1 に等しいことを仮定します。
+
+(注釈中ではなく) C言語コード中において算術演算をシンボリックに評価するとき、__Verify__ メニューの Checking arithmetic overflow がオフになっていなければ、
+VeriFast は演算の結果が結果の型の範囲に収まるかどうかチェックします。
+結果として、VeriFast は上記のプログラムを拒否します。
+また次のプログラムも拒否します:
+
+```c
+void int_add(int *x, int *y)
+    //@ requires integer(x, ?vx) &*& integer(y, ?vy);
+    //@ ensures integer(x, vx+vy) &*& integer(y, vy);
+{
+    int x_deref = *x;
+    int y_deref = *y;
+    *x = x_deref + y_deref;
+}
+```
+
+32-bit マシン上で正しく動作するように、この関数を修正してみましょう。
+次は最初の試みです:
+
+```c
+#include "stdlib.h"
+void int_add(int *x_ptr, int *y_ptr)
+    //@ requires integer(x_ptr, ?x_value) &*& integer(y_ptr, ?y_value);
+    //@ ensures integer(x_ptr, x_value+y_value) &*& integer(y_ptr, y_value);
+{
+    int x = *x_ptr;
+    int y = *y_ptr;
+    if (0 <= x) {
+        if (INT_MAX - x < y) abort();
+    } else {
+        if (y < INT_MIN - x) abort();
+    }
+    *x_ptr = x + y;
+}
+```
+
+この関数は 32-bit マシンで正しく動作するにもかかわらず、VeriFast はこの関数を受理しません。
+これは算術操作の結果がその型の範囲内かどうかチェックするけれども、元の値がその型の範囲内かどうか仮定しないからです。
+検証のパフォーマンスのために、これらの仮定は自動的には生成されません。
+これらの仮定を生成するためには、`produce_limits` ゴーストコマンドをこのコードに挿入する必要があります。
+`produce_limits` コマンドの引数は (注釈中で宣言されたローカル変数でなく) C言語ローカル変数の名前でなければなりません。
+次のプログラムは検証できます。
+
+```
+#include "stdlib.h"
+void int_add(int *x_ptr, int *y_ptr)
+    //@ requires integer(x_ptr, ?x_value) &*& integer(y_ptr, ?y_value);
+    //@ ensures integer(x_ptr, x_value+y_value) &*& integer(y_ptr, y_value);
+{
+    int x = *x_ptr;
+    int y = *y_ptr;
+    //@ produce_limits(x);
+    //@ produce_limits(y);
+    if (0 <= x) {
+        if (INT_MAX - x < y) abort();
+    } else {
+        if (y < INT_MIN - x) abort();
+    }
+    *x_ptr = x + y;
+}
+```
+
+注意: 上記のオーバーフローチェックされた整数に追加した実装は、パフォーマンスの点で最適なものではありません。
+例えば、x86 命令セットは、オーバーフローフラグがセットされるとソフトウェア割り込みを発生させる `INTO` (Interrupt on Overflow) 命令を含んでいます。
+この命令を使った実装はより良いパフォーマンスになるでしょう。
+
+注意: `integer`、`character` もしくは `pointer` チャンクがヒープにある場合、それぞれ補題 `integer_limits`、`character_limits` と `pointer_limits` を使うことができます。
+この補題の契約はファイル `prelude.h` にあります。
+
+## 15. 述語族
+
 xxx
