@@ -1508,4 +1508,101 @@ int を取り int を返す関数 f を取る関数 `stack_map` を追加して�
 
 ## 16. ジェネリクス
 
+整数のスタックに対する `stack_reverse` 関数の関数的な正しさを検証した練習問題14の答を考えてみましょう。
+`ints` 帰納データ型、不動点関数 `append` と `reverse`、そして補題 `append_nil` と `append_assoc` を使いました。
+ここで、ポインタのスタックに対して同じ機能が必要になったと想定してみましょう。
+明確に、C言語はジェネリクスをサポートしていないので、C言語コードをコピーアンドペーストして、至るところで __int__ を __void *__ に置き換える必要があります。
+けれども幸運なことに、VeriFast は
+帰納データ型、不動点関数、補題、そして述語に対するジェネリクスをサポートしてます。
+そのためそれらをコピーアンドペーストする代わりに、要素の型を使ってそれらをパラメータ化できます。
+次はパラメータ化した `ints`、`append`、そして `append_nil` です:
+
+```
+inductive list<t> = nil | cons(t, list<t>);
+
+fixpoint list<t> append<t>(list<t> xs, list<t> ys) {
+    switch (xs) {
+        case nil: return ys;
+        case cons(x, xs0): return cons<t>(x, append<t>(xs0, ys));
+    }
+}
+
+lemma void append_nil<t>(list<t> xs)
+    requires true;
+    ensures append<t>(xs, nil<t>) == xs;
+{
+    switch (xs) {
+        case nil:
+        case cons(x, xs0):
+            append_nil<t>(xs0);
+    }
+}
+```
+
+見たように、帰納データ型の定義、不動点関数の定義、もしくは補題の定義は、
+山括弧で囲まれた _型パラメータ_ (_type parameters_) のリストである _型パラメータリスト_ (_type parameter list_) を任意に受け取ります。
+その定義の中では、この型パラメータは他の型のように使うことができます。
+型パラメータ化されたデータ型、不動点、補題、述語、もしくは型パラメータ化されたデータ型のコンストラクタを使うときは、山括弧で囲まれた型のリストで _型引数リスト_ (_type argument list_) が指定されなければなりません。
+
+次はポインタのスタックに対する述語 `nodes` と `stack` と関数 `stack_reverse` です:
+
+```
+predicate nodes(struct node *node, list<void *> values) =
+    node == 0 ?
+        values == nil<void *>
+    :
+        node->next |-> ?next &*& node->value |-> ?value &*& malloc_block_node(node) &*&
+        nodes(next, ?values0) &*& values == cons<void *>(value, values0);
+
+predicate stack(struct stack *stack, list<void *> values) =
+    stack->head |-> ?head &*& malloc_block_stack(stack) &*& nodes(head, values);
+
+void stack_reverse(struct stack *stack)
+    //@ requires stack(stack, ?values);
+    //@ ensures stack(stack, reverse<void *>(values));
+{
+    //@ open stack(stack, values);
+    struct node *n = stack->head;
+    struct node *m = 0;
+    //@ close nodes(m, nil<void *>);
+    //@ append_nil<void *>(reverse<void *>(values));
+    while (n != 0)
+        /*@
+        invariant
+            nodes(m, ?values1) &*& nodes(n, ?values2) &*&
+            reverse<void *>(values) == append<void *>(reverse<void *>(values2), values1);
+        @*/
+    {
+        //@ open nodes(n, values2);
+        struct node *next = n->next;
+        //@ assert nodes(next, ?values2tail) &*& n->value |-> ?value;
+        n->next = m;
+        m = n;
+        n = next;
+        //@ close nodes(m, cons<void *>(value, values1));
+        //@ append_assoc<void *>(reverse<void *>(values2tail), cons<void *>(value, nil<void *>), values1);
+    }
+    //@ open nodes(n, _);
+    stack->head = m;
+    //@ close stack(stack, reverse<void *>(values));
+}
+```
+
+ジェネリクスのおかげで、int のスタックとポインタのスタックの両方を表わす同じデータ型、不動点、そして補題を再利用できます。
+けれども、いたるところに型引数リストを挿入する必要があることを考えると、このアプローチは多くの構文上のオーバーヘッドを導入するように思えます。
+幸運にも VeriFast は _型引数推論_ (_type argument inference_) を行ないます。
+もし VeriFast が式中にある型パラメータ化された要素を発見し、型引数リストが指定されていなかった場合、VeriFast は型引数リストを推論します。
+VeriFast の型システムはサブタイピングを持たないので、単純なユニフィケーションに基づく推論アプローチで十分です。
+その結果、式中で明確に型引数リストを与える必要はほとんどありません。
+具体的な例では、式中の全ての型引数リストは省略できます。
+注意: VeriFast は型中での型引数リストを推論しません; つまり型パラメータ化された帰納データ型を使うときには、常に型引数を明示的に与える必要があります。
+
+もちろん `list` データ型は単なる整数のスタックやポインタのスタックよりも一般的に有用です。
+実際、自明でないプログラムの検証ではリストを使用が要求されます。
+このため、VeriFast はリストデータ型、この例で使った不動点と補題、さらに他の機能を含むヘッダファイル `list.h` を備えています。
+このヘッダファイルはVeriFast によって検証されるそれぞれのファイルから暗黙的にインクルードされるので、それを明示的にインクルードする必要がありません。
+注意: これはまた、名前の衝突を引き起こすため、独自の `nil` や `cons` もしくは `list.h` で提供されるその他の要素を定義することができないことを意味しています。
+
+## 17. 述語値
+
 xxx
