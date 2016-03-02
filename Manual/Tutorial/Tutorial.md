@@ -1715,9 +1715,100 @@ predicate foreach<t>(list<t> vs, predicate(t) p) =
 この述語は一般に使用できるので、それは `list.h` からインクルードしています;
 結果として、それはそれぞれのファイルで自動的に有効で、自分で定義する必要はないのです。
 
-__Exercise 18__
+__練習問題 18__
 `foreach` を使ってこのプログラムを検証してください。
 
 ## 18. 述語コンストラクタ
+
+前章のプログラムにひねりを加えてみましょう:
+
+```c
+struct vector *create_vector(int limit, int x, int y)
+{
+    if (x * x + y * y > limit * limit) abort();
+    struct vector *result = malloc(sizeof(struct vector));
+    if (result == 0) abort();
+    result->x = x;
+    result->y = y;
+    return result;
+}
+
+int main()
+{
+    int limit = input_int();
+    struct stack *s = create_stack();
+    while (true)
+    {
+        char c = input_char();
+        if (c == ’p’) {
+            int x = input_int();
+            int y = input_int();
+            struct vector *v = create_vector(limit, x, y);
+            stack_push(s, v);
+        } else if (c == ’+’) {
+            bool empty = stack_is_empty(s);
+            if (empty) abort();
+            struct vector *v1 = stack_pop(s);
+            empty = stack_is_empty(s);
+            if (empty) abort();
+            struct vector *v2 = stack_pop(s);
+            struct vector *sum = create_vector(limit, v1->x + v2->x, v1->y + v2->y);
+            free(v1);
+            free(v2);
+            stack_push(s, sum);
+        } else if (c == ’=’) {
+            bool empty = stack_is_empty(s);
+            if (empty) abort();
+            struct vector *v = stack_pop(s);
+            int x = v->x;
+            int y = v->y;
+            free(v);
+            assert(x * x + y * y <= limit * limit);
+            output_int(x);
+            output_int(y);
+        } else {
+            abort();
+        }
+    }
+}
+```
+
+これでこのプログラムはベクトルのサイズの境界 (リミット) をユーザにたずねてから開始するようになりました。
+ベクトルを生成するとき、このプログラムはそのサイズがリミットを超えていないことをチェックします; そうでなければプログラムは中断します。
+ベクトルを印字するとき、このプログラムは
+そのべクトルがサイズリミットを満たすことを表明します。
+
+どうすればこの assert 命令文を検証できるでしょうか？
+
+ベクトルのサイズがリミットの範囲内であるという情報を含むように、述語 `vector` を拡張する必要があります。
+けれども、このリミットはローカル変数で、述語定義中ではスコープの範囲外です。
+そこで追加の引数を渡す必要があります。
+しかし、述語 `foreach` はもは使えません。
+それは唯一1つのパラメータを取る述語であると期待されているからです。
+これを解決するために、VeriFast は _述語コンストラクタ_ (_predicate constructors_) の形で、_部分適用された述語_ (_partially applied predicates_) をサポートしています。
+このプログラム例を検証するために、次のような述語コンストラクタ `vector` を定義できます:
+
+```c
+/*@
+predicate_ctor vector(int limit)(struct vector *v) =
+    v->x |-> ?x &*& v->y |-> ?y &*& malloc_block_vector(v) &*& x * x + y * y <= limit * limit;
+@*/
+```
+
+リスト `values` のそれぞれの要素について、次のようなリミット `limit` を満たすベクトルを持つことを表わすことができます。
+
+```
+foreach(values, vector(limit))
+```
+
+つまり、述語の名前を使うときはいつでも、引数リストに適用される述語コンストラクタも使うことができます。
+それは、open 命令文中、close 命令文中、そして表明の中で使えます。
+
+注意: 現時点では VeriFast は述語コンストラクタの引数位置におけるパターンをサポートしていません。
+
+__練習問題 19__
+このプログラムを検証してください。
+
+## 19. マルチスレッド
 
 xxx
