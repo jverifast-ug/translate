@@ -1605,4 +1605,119 @@ VeriFast の型システムはサブタイピングを持たないので、単�
 
 ## 17. 述語値
 
+前章では、ポインタのスタックを手に入れました。
+この章では、このスタックを使ってオブジェクトの集合の記録をつけてみます。
+
+次のプログラムを検証してみましょう。
+これは 2D ベクトルに対するスタックに基いた電卓です。
+これは前章でのスタックを使っています。
+ユーザはベクトルをスタックにプッシュし、上位2つのベクトルをそれらの和で置換し、印字するために上位のベクタをポップします。
+
+```c
+struct vector {
+    int x;
+    int y;
+};
+
+struct vector *create_vector(int x, int y)
+{
+    struct vector *result = malloc(sizeof(struct vector));
+    if (result == 0) abort();
+    result->x = x;
+    result->y = y;
+    return result;
+}
+
+int main()
+{
+    struct stack *s = create_stack();
+    while (true)
+    {
+        char c = input_char();
+        if (c == ’p’) {
+            int x = input_int();
+            int y = input_int();
+            struct vector *v = create_vector(x, y);
+            stack_push(s, v);
+        } else if (c == ’+’) {
+            bool empty = stack_is_empty(s);
+            if (empty) abort();
+            struct vector *v1 = stack_pop(s);
+            empty = stack_is_empty(s);
+            if (empty) abort();
+            struct vector *v2 = stack_pop(s);
+            struct vector *sum = create_vector(v1->x + v2->x, v1->y + v2->y);
+            free(v1);
+            free(v2);
+            stack_push(s, sum);
+        } else if (c == ’=’) {
+            bool empty = stack_is_empty(s);
+            if (empty) abort();
+            struct vector *v = stack_pop(s);
+            output_int(v->x);
+            output_int(v->y);
+            free(v);
+        } else {
+            abort();
+        }
+    }
+}
+```
+
+`create_vector` の仕様は簡単です:
+
+```c
+//@ predicate vector(struct vector *v) = v->x |-> _ &*& v->y |-> _ &*& malloc_block_vector(v);
+
+struct vector *create_vector(int x, int y)
+    //@ requires true;
+    //@ ensures vector(result);
+```
+
+トリッキーな部分は `main` のループに対するループ不変条件です。
+そのループ不変条件は `s` にスタックを持つことを表明すべきで、さらに `s` のそれぞれの要素にベクトルを持つことを表明しなければなりません。
+表明 `stack(s, ?values)` を使ってその1番目を表わすことができ、その2番目を表わすために再帰的な述語を容易に書くことができます:
+
+```
+redicate vectors(list<struct vector *> vs) =
+    switch (vs) {
+        case nil: return true;
+        case cons(v, vs0): return vector(v) &*& vectors(vs0);
+    };
+```
+
+これはうまく動作します。
+けれども、不幸にも、与えられた述語でリストのそれぞれの要素を表わしたいときは新しい述語を定義しなければなりません。
+これを解決するために VeriFast は _述語値_ (_predicate values_) をサポートしています。
+つまり、述語を引数として別の述語に渡せるのです。
+これで上記の述語 `vectors` を次のように一般化できます:
+
+```
+predicate foreach(list<void *> vs, predicate(void *) p) =
+    switch (vs) {
+        case nil: return true;
+        case cons(v, vs0): return p(v) &*& foreach(vs0, p);
+    };
+```
+
+ジェネリクスを使うことで、この述語をさらに一般化して、任意の値のリストを取れるようにさえできます:
+
+```
+predicate foreach<t>(list<t> vs, predicate(t) p) =
+    switch (vs) {
+        case nil: return true;
+        case cons(v, vs0): return p(v) &*& foreach(vs0, p);
+    };
+```
+
+型引数の推論のおかげで再帰 `foreach` 呼び出しの型引数を省略できることに注意してください。
+
+この述語は一般に使用できるので、それは `list.h` からインクルードしています;
+結果として、それはそれぞれのファイルで自動的に有効で、自分で定義する必要はないのです。
+
+__Exercise 18__
+`foreach` を使ってこのプログラムを検証してください。
+
+## 18. 述語コンストラクタ
+
 xxx
