@@ -1811,4 +1811,197 @@ __練習問題 19__
 
 ## 19. マルチスレッド
 
+整数の二分木を走査し、それぞれのノードの値の階乗を計算し、その結果を合計し、その合計をコンソールに印字するような次のようなプログラムを考えてみましょう。
+
+```c
+int rand();
+
+int fac(int x)
+{
+    int result = 1;
+    while (x > 1)
+    {
+        result = result * x;
+        x = x - 1;
+    }
+    return result;
+}
+
+struct tree {
+    struct tree *left;
+    struct tree *right;
+    int value;
+};
+
+struct tree *make_tree(int depth)
+{
+    if (depth == 0) {
+        return 0;
+    } else {
+        struct tree *left = make_tree(depth - 1);
+        struct tree *right = make_tree(depth - 1);
+        int value = rand();
+        struct tree *t = malloc(sizeof(struct tree));
+        if (t == 0) abort();
+        t->left = left;
+        t->right = right;
+        t->value = value % 2000;
+        return t;
+    }
+}
+
+int tree_compute_sum_facs(struct tree *tree)
+{
+    if (tree == 0) {
+        return 1;
+    } else {
+        int leftSum = tree_compute_sum_facs(tree->left);
+        int rightSum = tree_compute_sum_facs(tree->right);
+        int f = fac(tree->value);
+        return leftSum + rightSum + f;
+    }
+}
+
+int main()
+{
+    struct tree *tree = make_tree(22);
+    int sum = tree_compute_sum_facs(tree);
+    printf("%i", sum);
+    return 0;
+}
+```
+
+__練習問題 20__
+このプログラムのメモリ安全性を検証してください。
+合計を計算した後 (4章で見たように) 木がリークする可能性があります。
+
+このプログラムの実行には筆者のマシンで 14 秒かかります。
+けれども、筆者のマシンはデュアルコアなので、両コアで同時にオペレーティングシステムでスケジュールされうる2つのスレッドに分散させれば、スピードアップできるかもしれません。
+
+不幸にも、C言語ではマルチスレッドのプログラムを書くための標準的な方法が定義されていません。
+(最新のC言語標準 C11 はマルチスレッドのサポートを導入していますが、まだ広範囲にはサポートされていません。)
+Windows 向けのプログラムは Windows API を使うことができ、Unix 系オペレーティングシステム向けプログラムは一般に POSIX スレッド API を一般に使うことができます。
+けれども、VeriFast 配付版はサポートする全てのプラットフォーム横断する同一のインターフェイスを提供するこれらの API へのラッパーを含んでいます。
+これは `threading.h` で定義され、`threading.c` で実装されています;
+この両ファイルは VeriFast の `bin` ディレクトリにあります。
+VeriFast は `bin` ディレクトリ中のヘッダファイルを自動的に見つけるので、単純にファイルの先頭に次の行を追加するだけで、これらの API を使えます:
+
+```c
+#include "threading.h"
+```
+
+この章では、次のように `threading.h` で定義された関数 `thread_start_joinable` と `thread_join` を使います:
+
+```c
+typedef void thread_run_joinable(void *data);
+
+struct thread;
+
+struct thread *thread_start_joinable(void *run, void *data);
+
+void thread_join(struct thread *thread);
+```
+
+関数 `thread_start_joinable` は `run` 関数へのポインタを取り、新しいスレッドでこの関数を実行します。
+`run` 関数が要求するどのようなデータも `thread_start_joinable` の `data` パラメータを通して渡されます。このパラメータは単純に `run` 関数へ渡されます。
+`thread_start_joinable` は、関数 `thread_join` を使って生成済みスレッドの合流のために使うことのできるスレッドハンドルを返します。
+関数 `thread_join` は指定したスレッドが完了するのを待ちます。
+
+これらの関数を使って、次のようにこのプログラム例をスピードアップできます:
+
+```c
+struct sum_data {
+    struct thread *thread;
+    struct tree *tree;
+    int sum;
+};
+
+void summator(struct sum_data *data)
+{
+    int sum = tree_compute_sum_facs(data->tree);
+    data->sum = sum;
+}
+
+struct sum_data *start_sum_thread(struct tree *tree)
+{
+    struct sum_data *data = malloc(sizeof(struct sum_data));
+    struct thread *t = 0;
+    if (data == 0) abort();
+    data->tree = tree;
+    t = thread_start_joinable(summator, data);
+    data->thread = t;
+    return data;
+}
+
+int join_sum_thread(struct sum_data *data)
+{
+    thread_join(data->thread);
+    return data->sum;
+}
+
+int main()
+{
+    struct tree *tree = make_tree(22);
+    struct sum_data *leftData = start_sum_thread(tree->left);
+    struct sum_data *rightData = start_sum_thread(tree->right);
+    int sumLeft = join_sum_thread(leftData);
+    int sumRight = join_sum_thread(rightData);
+    int f = fac(tree->value);
+    printf("%i", sumLeft + sumRight + f);
+    return 0;
+}
+```
+
+main プログラムは深さ 22 の木を生成します。
+そして2つのスレッドが開始されます。
+1つ目のスレッドは左のサブ木の値の階乗の合計を計算し、2つ目のスレッドは右のサブ木の値の階乗の合計を計算します。
+それからメインスレッドは両スレッドの完了を待ち合わせ、最後に両スレッドの結果とルートノードの値の階乗を合計します。
+筆者のマシンでは、このプログラムの実行には 7 秒かかります;
+2倍スピードアップしました!
+
+ここで、このプログラムのメモリ安全性を検証してみましょう。
+このプログラムの検証には新しい手法は必要ありません;
+単純に、関数ポインタと述語族について12章と15章で見た手法を適用します。
+つまり、`thread_run_joinable` 関数ポインタ型について契約を指定し、それぞれのプログラムが必要に応じてこの契約を具体化できるように、述語族を使います。
+`threading.h` における `thread_start_joinable` と `thread_join` の仕様は次のようになります:
+
+```c
+/*@
+
+predicate_family thread_run_pre(void *thread_run)(void *data, any info);
+predicate_family thread_run_post(void *thread_run)(void *data, any info);
+
+@*/
+
+typedef void thread_run_joinable(void *data);
+    //@ requires thread_run_pre(this)(data, ?info);
+    //@ ensures thread_run_post(this)(data, info);
+
+struct thread;
+
+/*@ predicate thread(struct thread *thread, void *thread_run, void *data, any info); @*/
+
+struct thread *thread_start_joinable(void *run, void *data);
+    //@ requires is_thread_run_joinable(run) == true &*& thread_run_pre(run)(data, ?info);
+    //@ ensures thread(result, run, data, info);
+
+void thread_join(struct thread *thread);
+    //@ requires thread(thread, ?run, ?data, ?info);
+    //@ ensures thread_run_post(run)(data, info);
+```
+
+関数 `thread_start_joinable` は、パラメータ `run` の値が関数ポインタ型 `thread_run_joinable` の契約を満たす関数ポインタであることを要求しています;
+さらにそれは、述語族インスタンス `thread_run_pre(run)` が示す、`run` 関数自身が要求するリソースを要求します。
+事前条件がこのポインタが指すデータ構造を表現できるように、この述語は `data` ポインタを引数として取ります。
+`thread_run_pre` と `thread_run_post` の `info` パラメータはより高度なシナリオで使われますが、ここでは説明を省略します。
+関数 `thread_start_joinable` は、`thread_join` 呼び出しを検証するために要求される全ての情報を含む述語 `thread` を返します。
+関数 `thread_join` はこの述語 `thread` を取り、述語族インスタンス `thread_run_post(run)` で表現された `run` 関数が返すリソースを返します。
+
+__練習問題 21__
+このプログラムのメモリ安全性を検証してください。
+メモリの解放については気にする必要はありません;
+不要となったチャンクを単にリークさせてください。
+
+## 20. Fractional Permissions
+
 xxx
