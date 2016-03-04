@@ -76,6 +76,18 @@
 
 "不動点関数"
 
+### Fraction
+
+"分数"
+
+### Fractional permission
+
+"分数パーミッション"
+
+### Full permission
+
+"フルパーミッション"
+
 ## G
 
 ### Generics
@@ -174,6 +186,15 @@
 
 ## Q
 ## R
+
+### Read-only permission
+
+"読み出し専用パーミッション"
+
+### Read-write permission
+
+"読み書きパーミッション"
+
 ## S
 
 ### Separating conjunction

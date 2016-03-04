@@ -2002,6 +2002,170 @@ __練習問題 21__
 メモリの解放については気にする必要はありません;
 不要となったチャンクを単にリークさせてください。
 
-## 20. Fractional Permissions
+## 20. 分数パーミッション
+
+ここで、前章のプログラムを次のようにしたいと仮定してみましょう:
+単に階乗の和を計算する代わりに、階乗の和と階乗の積の両方を計算したいのです。
+筆者のマシンは2つのコアを持つので、2つのスレッドを走らせたいのです:
+1つは木のノードの値の階乗の和を計算し、もう1つは木のノードの値の階乗の積を計算します。
+
+これを解決するために、はじめに先の `tree_compute_sum_facs` 関数を、引数としてノードの値を刈り取る関数を取る `tree_fold` 関数に一般化しましょう:
+
+```c
+typedef int fold_function(int acc, int x);
+
+int tree_fold(struct tree *tree, fold_function *f, int acc)
+{
+    if (tree == 0) {
+        return acc;
+    } else {
+        acc = tree_fold(tree->left, f, acc);
+        acc = tree_fold(tree->right, f, acc);
+        acc = f(acc, tree->value);
+        return acc;
+    }
+}
+```
+
+末端からの順序で木 `t` の要素が `e1`, `e2`, `e3`, `e4` であった場合、`tree_fold (t, f, a)` は次を返します:
+
+`f(f(f(f(a,e1),e2),e3),e4)`
+
+同様に先の和を計算するスレッドは fold スレッドに一般化できます:
+
+```c
+struct fold_data {
+    struct thread *thread;
+    struct tree *tree;
+    fold_function *f;
+    int acc;
+};
+
+void folder(struct fold_data *data)
+{
+    int acc = tree_fold(data->tree, data->f, data->acc);
+    data->acc = acc;
+}
+
+struct fold_data *start_fold_thread(struct tree *tree, fold_function *f, int acc)
+{
+    struct fold_data *data = malloc(sizeof(struct fold_data));
+    struct thread *t = 0;
+    if (data == 0) abort();
+    data->tree = tree;
+    data->f = f;
+    data->acc = acc;
+    t = thread_start_joinable(folder, data);
+    data->thread = t;
+    return data;
+}
+
+int join_fold_thread(struct fold_data *data)
+{
+    thread_join(data->thread);
+    return data->acc;
+}
+```
+
+次のように、fold スレッドを使うことで前章のプログラムを再実装できます:
+
+```c
+int sum_function(int acc, int x)
+{
+    int f = fac(x);
+    return acc + f;
+}
+
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    struct tree *tree = make_tree(22);
+    //@ open tree(tree, _);
+    struct fold_data *leftData = start_fold_thread(tree->left, sum_function, 0);
+    struct fold_data *rightData = start_fold_thread(tree->right, sum_function, 0);
+    int sumLeft = join_fold_thread(leftData);
+    int sumRight = join_fold_thread(rightData);
+    int f = fac(tree->value);
+    //@ leak tree->left |-> _ &*& tree->right |-> _ &*& tree->value |-> _ &*& malloc_block_tree(tree);
+    printf("%i", sumLeft + sumRight + f);
+    return 0;
+}
+```
+
+__練習問題 22__
+このプログラムのメモリ安全性を検証してください。
+
+これで、1つのスレッドで和を計算し、もう1つのスレッドで積を計算し、積と和で異なる結果を返すプログラムを書くのは簡単です:
+
+```c
+int sum_function(int acc, int x)
+{
+    int f = fac(x);
+    return acc + f;
+}
+
+int product_function(int acc, int x)
+{
+    int f = fac(x);
+    return acc * f;
+}
+
+int main()
+{
+    struct tree *tree = make_tree(21);
+    struct fold_data *sumData = start_fold_thread(tree, sum_function, 0);
+    struct fold_data *productData = start_fold_thread(tree, product_function, 1);
+    int sum = join_fold_thread(sumData);
+    int product = join_fold_thread(productData);
+    printf("%i", product - sum);
+    return 0;
+}
+```
+
+けれども、これまで見てきた手法を使ってこのプログラムを検証することはできません。
+1度目の `start_fold_thread` 呼び出しは `tree` チャンクを消費し、その結果2度目の呼び出しにおける事前条件を満たせないので VeriFast はエラーになってしまいます。
+このシステムでは説明した通り、
+一度に1つのスレッドだけが特定のメモリチャンクを所有できます。
+したがって、もし和を計算するスレッドが木を所有していると、積を計算するスレッドはそれを同時にアクセスすることはできないのです。
+けれども、両スレッドが木を読むだけでその木を変更しないのであれば、実際にはこれは安全です。
+
+VeriFast は _分数パーミッション_ (_fractional permissions_) を使うことで、読み出し専用の共有メモリチャンクをサポートしています。
+VeriFast のシンボリックヒープ中のそれぞれのチャンクは、ゼロより大きく 1 以下の実数であるような、1つの _係数_ (_coefficient_) を持っています。
+デフォルトの係数は 1 で、見えません。
+もしチャンクの係数が 1 でなければ、それは角括弧で囲われてチャンクの左に表示されます。
+係数 1 のチャンクは _フルパーミッション_ (_full permission_) を表わし、それはすなわち _読み書きパーミッション_ (_read-write permission_) です。
+係数が 1 より小さいチャンクは _分数パーミッション_ (_fractional permissions_) を表わし、それはすなわち _読み出し専用パーミッション_ (_read-only permission_) です。
+
+`tree_fold` 関数は木を変更しないので、`tree` チャンクの分数のみを要求します。
+
+```c
+int tree_fold(struct tree *tree, fold_function *f, int acc)
+    //@ requires [?frac]tree(tree, ?depth) &*& is_fold_function(f) == true;
+    //@ ensures [frac]tree(tree, depth);
+{
+    if (tree == 0) {
+        return acc;
+    } else {
+        //@ open [frac]tree(tree, depth);
+        acc = tree_fold(tree->left, f, acc);
+        acc = tree_fold(tree->right, f, acc);
+        acc = f(acc, tree->value);
+        return acc;
+        //@ close [frac]tree(tree, depth);
+    }
+}
+```
+
+`tree` チャンクの任意の小さな分数に関数を適用できるように、係数の位置においてパターンを使用していることに注意してください。
+また、__open__ と __close__ 命令文で分数を指定していることにも注意してください。
+シンボリックヒープ中にある分数はデフォルトで開くので __open__ 命令文は必要ではありませんが、係数 1 のチャンクはデフォルトで閉じようとするので __close__ 命令文は必要です。
+
+__練習問題 23__
+このプログラムのメモリ安全性を検証してください。
+木のチャンクの 1/2 の分数のみを要求するように、関数 `start_fold_thread` を修正してください。
+注意: 少数表記はサポートされていません; 代わりに分数表記を使ってください。
+
+## 21. Precise Predicates
 
 xxx
