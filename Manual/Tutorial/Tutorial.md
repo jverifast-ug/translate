@@ -2166,6 +2166,195 @@ __練習問題 23__
 木のチャンクの 1/2 の分数のみを要求するように、関数 `start_fold_thread` を修正してください。
 注意: 少数表記はサポートされていません; 代わりに分数表記を使ってください。
 
-## 21. Precise Predicates
+## 21. 正確な述語
+
+前章のプログラムは大量にメモリをリークしています。
+このリークはプログラムが終了する前にのみ起きるだけなので、これは構わないでしょう。
+けれども、このプログラムがもっと大きいプログラムの一部で、実行時間の長いと仮定してみましょう;
+この場合、このようなリークの除去は重要になります。
+そこでこの章では、前章のプログラムから __leak__ コマンドを除去してみましょう。
+
+はじめに、全ての動的確保したメモリをきっちり解放するように、C言語プログラムを修正しなければなりません。
+関数 `dispose_tree` を導入し、関数 `join_fold_thread` と `main` を修正する必要があります:
+
+```c
+void dispose_tree(struct tree *tree)
+{
+    if (tree != 0) {
+        dispose_tree(tree->left);
+        dispose_tree(tree->right);
+        free(tree);
+    }
+}
+
+int join_fold_thread(struct fold_data *data)
+{
+    thread_join(data->thread);
+    int result = data->acc;
+    free(data);
+    return result;
+}
+
+int main()
+{
+    struct tree *tree = make_tree(21);
+    struct fold_data *sumData = start_fold_thread(tree, sum_function, 0);
+    struct fold_data *productData = start_fold_thread(tree, product_function, 1);
+    int sum = join_fold_thread(sumData);
+    int product = join_fold_thread(productData);
+    dispose_tree(tree);
+    printf("%i", product - sum);
+    return 0;
+}
+```
+
+注釈の修正は少しトリッキーです。
+はじめに簡単な部分を見てみましょう: 関数 `join_fold_thread` 中の `free` 命令文の検証です。
+それは既に要求されたパーミッションのほとんどを持っています; 唯一 `malloc_block_fold_data` チャンクが欠落しています。
+このチャンクは関数 `start_fold_thread` 中でリークされています。
+__leak__ 命令文を削除し、`start_fold_thread` の __ensures__ 節と `join_fold_thread` の __requires__ 節にそのチャンクを追加することでこの問題を解決できます; これで `free` 命令文は検証されました。
+
+これで残りは関数 `main` 中の `dispose_tree` 呼び出しの検証になりました。
+木に対するフルパーミッション、すなわち `tree(tree, _)` チャンクが必要です。
+それぞれの `join_fold_thread` 呼び出しは `[1/2]tree(tree, _)` チャンクをリークしていることに注意してください。
+このチャンクをリークする代わりに呼び出し元に戻すために、関数 `join_fold_thread` の注釈を修正する必要があります。
+けれども現状では、`join_fold_thread` の契約中でその木を特定する方法がありません。
+また `main` において、そのチャンクが処分する特定の木に関連することを知らないので、`[1/2]tree(_, _)` チャンクは役に立ちません。
+
+この問題を解決するために、その木が関数 `join_fold_thread` の事前状態中でフィールド `data->tree` によって指されていることに注意してください。
+けれども、このフィールドに対するフルパーミッションを folder スレッドに渡してしまったので、関数 `join_fold_thread` の事前条件中でこのフィールドに言及できません。
+
+解決策は、フィールド `data->tree` を表わすパーミッションの分数のみを fold スレッドに渡し、main スレッド中で残りの分数を保有することです。
+これを行なうために、述語族インスタンス `thread_run_pre` と `thread_run_post`、関数 `start_fold_thread` と `join_fold_thread` の契約を修正しましょう:
+
+```c
+/*@
+
+predicate_family_instance thread_run_pre(folder)(struct fold_data *data, any info) =
+    [1/2]data->tree |-> ?tree &*& [1/2]tree(tree, _) &*&
+    data->f |-> ?f &*& is_fold_function(f) == true &*& data->acc |-> _;
+predicate_family_instance thread_run_post(folder)(struct fold_data *data, any info) =
+    [1/2]data->tree |-> ?tree &*& [1/2]tree(tree, _) &*&
+    data->f |-> ?f &*& is_fold_function(f) == true &*& data->acc |-> _;
+
+@*/
+
+struct fold_data *start_fold_thread(struct tree *tree, fold_function *f, int acc)
+    //@ requires [1/2]tree(tree, _) &*& is_fold_function(f) == true;
+    /*@
+    ensures
+        [1/2]result->tree |-> tree &*& result->thread |-> ?t &*&
+        thread(t, folder, result, _) &*& malloc_block_fold_data(result);
+    @*/
+int join_fold_thread(struct fold_data *data)
+    /*@
+    requires
+        [1/2]data->tree |-> ?tree &*& data->thread |-> ?t &*&
+        thread(t, folder, data, _) &*& malloc_block_fold_data(data);
+    @*/
+    //@ ensures [1/2]tree(tree, _);
+```
+
+これで関数 `join_fold_thread` の事後条件中で `[1/2]tree(tree, _)` チャンクを指定できます。
+
+ここで関数 `main` は `dispose_tree` 呼び出しにおいて、2つの `[1/2]tree(tree, _)` チャンクを持つことに注意してください。
+2つの半分のチャンクを持ち、必要なのは1つのフルチャンクです;
+なぜ VeriFast は単純にこの2つの半分チャンクを結合してくれないのでしょうか？
+
+その理由は2つの分数チャンクを1つのチャンクに結合するのが常に健全 (すなわち安全) であるとは限らないからです。
+例えば、次のプログラムは検証できます:
+
+```c
+/*@
+
+predicate foo(bool b) = true;
+
+predicate bar(int *x, int *y) = foo(?b) &*& b ? integer(x, _) : integer(y, _);
+
+lemma void merge_bar() // This lemma is false!!
+    requires [?f1]bar(?x, ?y) &*& [?f2]bar(x, y);
+    ensures [f1 + f2]bar(x, y);
+{
+    assume(false);
+}
+
+@*/
+
+int main()
+    //@ requires true;
+    //@ ensures true;
+{
+    int x, y;
+    //@ close [1/2]foo(true);
+    //@ close [1/2]bar(&x, &y);
+    //@ close [1/2]foo(false);
+    //@ close [1/2]bar(&x, &y);
+    //@ merge_bar();
+    //@ open bar(&x, &y);
+    //@ assert foo(?b);
+    //@ if (b) integer_unique(&x); else integer_unique(&y);
+    assert(false);
+}
+```
+
+このプログラムは、与えられたチャンクの2つの分数は1つのチャンクに結合できるという仮定が、不健全性を引き起こすことを示しています
+(すなわち実行時に表明に失敗するプログラムの検証に成功してしまいます)。
+このプログラムは `prelude.h` の次の補題を使っています:
+
+```
+lemma void integer_unique(int *p);
+    requires [?f]integer(p, ?v);
+    ensures [f]integer(p, v) &*& f <= 1;
+```
+
+この問題は2つの `[1/2]bar(&x, &y)` チャンクが同じメモリ領域を表わさないことに由来します:
+1つは `[1/2]integer(&x, _)` を表わし、もう1つは `[1/2]integer(&y, _)` を表わします。
+これらの結合は `integer(&x, _)` も `integer(&y, _)` も生み出しません。
+
+けれども、両方の分数が同じメモリ領域を表わすのであれば、2つの分数を結合するのは健全です。
+これをサポートするために、VeriFast は _正確な述語_ (_precise predicates_) の表記をサポートしています:
+述語のパラメータリスト中の _入力パラメータ_ (_input parameters_) と _出力パラメータ_ (_output parameters_) の間のコンマの代わりにセミコロンを書くことで、述語を _正確_ (_precise_) に宣言できます。
+このような述語に対して、VeriFast は、同じ入力引数をともなう2つのチャンクが同じメモリ領域を表わし、常に同じ出力引数を持つことをチェックします。
+VeriFast は同じ入力引数を持つような正確な述語の分数を自動的に結合します。
+
+例えば、述語 `integer` 自身は正確な述語です; それは `prelude.h` において次のように宣言されています:
+
+```
+predicate integer(int *p; int v);
+```
+
+この宣言は述語 `integer` が正確で、1つの入力パラメータ `p` と1つの出力パラメータ `v` を持つことを指定しています。
+VeriFast が2つのチャンク `[f1]integer(p1, v1)` と `[f2]integer(p2, v2)` を見つけて、`p1` と `p2` が等しいことを証明できると、
+それらのチャンクを1つのチャンク `[f1 + f2]integer(p1, v1)` に結合し、`v1` と `v2` が等しい仮定を生成します。
+
+結論として、このプログラム例を検証するためには、述語 `tree` を正確に宣言する必要があります:
+
+```
+predicate tree(struct tree *t; int depth) =
+    t == 0 ?
+        depth == 0
+    :
+        t->left |-> ?left &*& t->right |-> ?right &*& t->value |-> _ &*& malloc_block_tree(t) &*&
+        tree(left, ?childDepth) &*& tree(right, childDepth) &*& depth == childDepth + 1;
+```
+
+VeriFast の正確さ解析によって受け入れられるように、述語の本体を少し書き換えたことに注意してください。
+これでこのプログラムは検証できます。
+
+正確さの解析は、述語の本体が入力パラメータについて正確であり、出力パラメータが固定であることをチェックします。
+固定の値 _X_ の集合において様々な形式の表明が正確であるための規則は次のようになります:
+
+* もし述語が正確でその入力引数が _X_ 固定であれば、その述語の表明は _X_ において正確です; 出力引数として現われるどのような値も固定になります。例えば、表明 `p(x + y, z)` が正確であると考えられれば、`p` は正確な述語です。さらに、それは1つの入力パラメータを持つと仮定します。すると `x` と `y` は _X_ 中で、その表明は `z` 固定になります。
+* もし係数が _X_ で固定か、その係数がダミーのパターンで、本体が _X_ で正確であるなら、その分数の表明は正確です; その本体で固定化されているどのような変数も固定になります。
+* ブール表明はどのような _X_ においても常に正確です。それが等式で、その左辺が変数で、その右辺が _X_ で固定されていない限り、どのような変数も固定にはなりません; そのような例外においては、その左辺の変数は固定になります。
+* もし条件が _X_ で固定されていて、それぞれの分岐が _X_ において正確であるなら、その条件の表明は _X_ において正確です; その固定の変数は全ての分岐によって固定の変数です。
+* 同様に、もしオペランドが _X_ で固定で、それぞれの分岐が _X_ の和集合とコンストラクタ引数において正確なら、その __switch__ 表明は正確です; その固定の変数は全ての分岐によって固定の変数です。
+* 1番目のオペランドが _X_ において正確で、2番目のオペランドが _X_ の和集合において正確で、変数が1番目のオペランドで固定なら、その分離積は正確です。どちらのオペランドでも変数は固定です。
+
+つまりこの解析は、固定の変数の集合を追跡するために、表明を左から右に横断します。
+入れ子になった述語の入力引数と分岐条件は、すでに固定である変数にのみ依存しなければなりません;
+入れ子になった述語の表明の出力引数としてか、もしくは右辺が固定であるような等式の左辺に現われる変数は、固定の変数の集合に追加されます。
+
+## 22. 自動 open/close
 
 xxx

@@ -122,6 +122,10 @@
 
 "帰納パラメータ"
 
+### Input parameter
+
+"入力パラメータ"
+
 ### Invariant
 
 "不変条件"
@@ -154,6 +158,11 @@
 
 ## N
 ## O
+
+### Output parameter
+
+"出力パラメータ"
+
 ## P
 
 ### Path condition
@@ -167,6 +176,10 @@
 ### Precondition
 
 "事前条件"
+
+### Precise predicate
+
+"正確な述語"
 
 ### Predicate
 
