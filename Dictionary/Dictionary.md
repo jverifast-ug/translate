@@ -6,6 +6,10 @@
 
 "スタックフレーム"
 
+### Acquire
+
+"獲得"
+
 ### Allocate
 
 "確保する"
@@ -146,6 +150,10 @@
 
 "リストセグメント"
 
+### Lock invariant
+
+"ロック不変条件"
+
 ### Logical symbol
 
 "論理記号"
@@ -189,6 +197,10 @@
 
 "述語族"
 
+### Predicate value
+
+"述語値"
+
 ### Producing
 
 "生成"
@@ -207,6 +219,10 @@
 ### Read-write permission
 
 "読み書きパーミッション"
+
+### Release
+
+"解放"
 
 ## S
 

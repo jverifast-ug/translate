@@ -2364,10 +2364,181 @@ VeriFast の正確さ解析によって受け入れられるように、述語�
 
 特に VeriFast が述語の表明を消費していて、シンボリックヒープにマッチするチャンクが無く、けれどもその述語が正確で、全ての入力引数がその表明で指定されていたら、自動 open と自動 close が試行されます。
 述語の本体に有るチャンクがシンボリックヒープに見つかったら、自動 close が行なわれます;
-所望のチャンクがシンボリックヒープに有るチャンクの本体に現われたら、自動 open が実行されます。
+所望のチャンクがシンボリックヒープに有るチャンクの本体に現われたら、自動 open が行なわれます。
 
 例えば、これまでの章でのプログラムにおいて、`tree` チャンクを開いたり閉じたりする全てのゴーストコマンドは削除できます。
 
 ## 23. Mutex
+
+1秒に一度、2つのセンサーをモニタし、両方のセンサーで検出したパルスの数の合計を印字するようなプログラムを書きたいと仮定しましょう。
+API 関数 `wait_for_pulse` を使って、与えられたセンサーからのパルスを待ち合わせることができます。
+パルスは両方のセンサーから同時にやってくるので、別々のスレッドでそれぞれのセンサーからのパルスを待ち合わせる必要があります。
+パルスがセンサーから届いたときはいつでも、一致するスレッドがスレッド間で共有された1つのカウンタをインクリメントします。
+main スレッドは毎秒に1回、そのカウンタの値を印字します。
+
+この例のカウンタのように、複数のスレッドが同時に同じ変数にアクセスすると、それらのアクセスを同期させる必要があります;
+さもなければ、2つの並列アクセスは干渉し、それらのアクセスが交互に行なわれた際の結果とは異なる結果を引き起こすかもしれません。
+ほとんどのプログラミングプラットフォームは
+様々な方法でスレッドを同期させるために、様々な同期機構を提供しています。
+
+おそらく最も一般的な同期機構は、ロックもしくは mutex としても知られる、相互排他ロックです。
+どの時点においても、mutex は2つの状態の1つを取ります; それはフリーかなんらかのスレッドによって保持されるかどちらかです。
+mutex は1つ以上のスレッドによって保持されることはありません。
+mutex は2つの操作を提供します; 獲得と解放です。
+スレッドが mutex を獲得しようと試みた場合、2つの場合があります。
+
+* もしその mutex がフリーなら、その試みは成功し、スレッドは解放するまでその mutex を保持します。
+* もしその mutex が別のスレッドによって保持されていたら、その試みを行なったスレッドはその mutex がフリーになるまでブロックします。
+* もしその mutex が獲得を試みるスレッドによって既に保持されていたら、そこ結果は mutex がリエントラントか非リエントラントかに依存します。もしその mutex がリエントラントなら、その試みは成功し、スレッドはさらにそのロックを保持します。もしその mutex が非リエントラントなら、その試みは失敗します。これは、スレッドが永遠にブロックするか、エラーが発生してプログラムが終了するかどちらかであることを意味しています。
+
+C言語はれ自身ではどのような同期機構も提供しません; オペレーティングシステムの責務です。
+例えば、Windows API はクリティカルセクションと呼ばれる mutex 機構を提供し、Linux API は mutex と呼ばれる mutex 機構を提供します。
+全てのプラットフォーム横断の同一インターフェイスのために、VeriFast は2つの同期機構、mutex と ロック、を提供するモジュール `threading.c` を持っています。
+これら2つの唯一の違いは mutex は非リエントラントで、ロックはリエントラントであることです。
+mutex の方が使いやすいので、この例では mutex を使います。
+
+次はプログラム例のソースコードです:
+
+```c
+#include "stdlib.h"
+#include "threading.h"
+
+void wait_for_pulse(int source);
+void sleep(int millis);
+void print_int(int n);
+
+struct counter {
+    int count;
+    struct mutex *mutex;
+};
+
+struct count_pulses_data {
+    struct counter *counter;
+    int source;
+};
+
+void count_pulses(struct count_pulses_data *data) {
+    struct counter *counter = data->counter;
+    int source = data->source;
+    free(data);
+
+    struct mutex *mutex = counter->mutex;
+
+    while (true) {
+        wait_for_pulse(source);
+        mutex_acquire(mutex);
+        counter->count++;
+        mutex_release(mutex);
+    }
+}
+
+void count_pulses_async(struct counter *counter, int source) {
+    struct count_pulses_data *data = malloc(sizeof(struct count_pulses_data));
+    if (data == 0) abort();
+    data->counter = counter;
+    data->source = source;
+    thread_start(count_pulses, data);
+}
+
+int main() {
+    struct counter *counter = malloc(sizeof(struct counter));
+    if (counter == 0) abort();
+    counter->count = 0;
+    struct mutex *mutex = create_mutex();
+    counter->mutex = mutex;
+
+    count_pulses_async(counter, 1);
+    count_pulses_async(counter, 2);
+
+    while (true) {
+        sleep(1000);
+        mutex_acquire(mutex);
+        print_int(counter->count);
+        mutex_release(mutex);
+    }
+}
+```
+
+このプログラムでは、スレッドを待ち合わせないので、`thread_start_joinable` の代わりにスレッド API 関数 `thread_start` を使います。
+関数 `thread_start` の仕様は、19章で議論した関数 `thread_start_joinable` の仕様に似ています;
+それはヘッダファイル `threading.h` で次のように与えられます:
+
+```c
+//@ predicate_family thread_run_data(void *thread_run)(void *data);
+
+typedef void thread_run(void *data);
+    //@ requires thread_run_data(this)(data);
+    //@ ensures true;
+
+void thread_start(void *run, void *data);
+    //@ requires is_thread_run(run) == true &*& thread_run_data(run)(data);
+    //@ ensures true;
+```
+
+mutex を使ってプログラミングすると、ミスを犯しがちです。
+最も悪い問題は、保護されるべきデータ構造をアクセスする前に mutex を獲得することをプログラマが忘れることです。
+その結果として誤った結果が得られ、原因を調べるのは困難になるかもしれません。
+
+幸運にも、VeriFast はこれらのトリッキーなバグの捕捉を助けてくれます。
+これまでの章から、VeriFast によるチェックの結果として、それぞれのスレッドは所有するメモリ位置にのみアクセスでき、2つのスレッドが同時に同じメモリ位置を (フルに) 所有することはできないことを思い出してください。
+これは並列アクセスによる干渉を防止します。
+けれども、それならどうやってスレッドは可変の変数を共有できるのでしょうか？
+もちろんその答は mutex を使うことです。
+mutex が生成されると、それは _ロック不変条件_ (_lock invariant_) によって指定された、メモリ位置の集合の所有権を取ります。
+スレッドが mutex を獲得すると、その mutex によって所有されたメモリ位置は、スレッドがその mutex を解放するまで、そのスレッドによって所有されるようになります。
+その mutex が解放されると、そのメモリ位置は再びその mutex の所有になります。
+この方法で mutex を共有することで、スレッドは任意のメモリ位置をうまく同期して間接的に共有できます。
+
+`threading.c` によって提供される mutex 関数は `threading.h` で次のように指定されます:
+
+```c
+struct mutex;
+
+/*@
+predicate mutex(struct mutex *mutex; predicate() p);
+predicate mutex_held(struct mutex *mutex, predicate() p, int threadId, real frac);
+predicate create_mutex_ghost_arg(predicate() p) = true;
+@*/
+
+struct mutex *create_mutex();
+    //@ requires create_mutex_ghost_arg(?p) &*& p();
+    //@ ensures mutex(result, p);
+
+void mutex_acquire(struct mutex *mutex);
+    //@ requires [?f]mutex(mutex, ?p);
+    //@ ensures mutex_held(mutex, p, currentThread, f) &*& p();
+
+void mutex_release(struct mutex *mutex);
+    //@ requires mutex_held(mutex, ?p, currentThread, ?f) &*& p();
+    //@ ensures [f]mutex(mutex, p);
+
+void mutex_dispose(struct mutex *mutex);
+    //@ requires mutex(mutex, ?p);
+    //@ ensures p();
+```
+
+mutex を生成するとき、その mutex によって所有されるメモリ位置を _ロック不変条件_ (_lock invariant_) で指定する必要があります。
+それは _述語値_ (_predicate value_) (17章を見てください) を指定することで行ないます。
+実関数 `create_mutex` は実引数としてその述語値を取れないので、この関数はその述語値を述語 `create_mutex_ghost_arg` の引数の形でゴースト引数として取ります。
+この述語はこの目的のためにだけ存在します。
+つまり、`create_mutex` を呼び出す前に、引数が新しい mutex に対するロック不変条件を指定する述語の名前であるような `create_mutex_ghost_arg` チャンクを閉じる必要があります。
+`create_mutex` 呼び出しはそのゴースト引数チャンクとそのロック不変条件チャンクを消費し、その mutex を現わす `mutex` チャンクを生成します。
+このチャンクはその第二引数としてロック不変条件を指示します。
+
+複数のスレッドに mutex の共有を許すために、mutex チャンクは複数の分数に分割できます。
+mutex を獲得するために、その mutex チャンクの唯一1つの分数を要求します。
+mutex が獲得されると、`mutex` チャンク分数は `mutex_held` チャンクに変化します。
+この `mutex_held` チャンクは mutex とロック不変条件を指定するだけでなく、mutex を獲得したスレッドと 、mutex の獲得に仕様された mutex チャンク分数の係数も指定します。
+`mutex_acquire` 呼び出しは、mutex によって所有されたメモリ位置へのアクセスをスレッドに与える、ロック不変条件も追加で生成します。
+
+`mutex_release` 呼び出しは、ロック不変条件と現在のスレッドに対する `mutex_held` チャンクを消費し、ロックを獲得するために使われた元の `mutex` チャンクを生成します。
+
+必要なら、プログラムが mutex を使い終わると、全ての mutex チャンク分数を集めて mutex を処分することができます;
+これによって mutex を処分したスレッドにロック不変条件の所有権が返ります。
+
+__練習問題 24__
+このプログラム例を検証してください。
+
+## 24. Leaking and Dummy Fractions
 
 xxx
