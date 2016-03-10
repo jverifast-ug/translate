@@ -64,6 +64,14 @@
 
 "解放する"
 
+### Dummy fraction
+
+"ダミー分数"
+
+### Dummy fraction coefficient symbol
+
+"ダミー分数係数シンボル"
+
 ## E
 
 ### Executing statement

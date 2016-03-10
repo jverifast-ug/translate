@@ -2539,6 +2539,117 @@ mutex が獲得されると、`mutex` チャンク分数は `mutex_held` チャ�
 __練習問題 24__
 このプログラム例を検証してください。
 
-## 24. Leaking and Dummy Fractions
+## 24. リークとダミー分数
+
+前章のプログラム例からはじめましょう。
+このプログラムでは、パルスの発信源の数は固定でした。
+ここで、発信源が動的に接続されたり切断されたりすると仮定してみましょう。
+初期状態では発信源はありません。
+接続される新しい発信源を待ち合わせて、その識別子を返す API 関数 `wait_for_source` があるとします。
+さらに API 関数 `wait_for_pulse` がブール値を返すとします。
+その結果が偽なら、新しいパルスが検出されたことを意味します; その結果が真なら、その発信源が切断されたことを意味します。
+プログラムの目的は、全ての発信源からのパルスの合計数を数えて、毎秒に1度それを印字することのままです。
+次のプログラムはこれを実装しています:
+
+```c
+#include "stdlib.h"
+#include "threading.h"
+
+int wait_for_source();
+bool wait_for_pulse(int source); // true means the sensor has been removed.
+void sleep(int millis);
+void print_int(int n);
+
+struct counter {
+    int count;
+    struct mutex *mutex;
+};
+
+struct count_pulses_data {
+    struct counter *counter;
+    int source;
+};
+
+void count_pulses(struct count_pulses_data *data) {
+    struct counter *counter = data->counter;
+    int source = data->source;
+    free(data);
+
+    struct mutex *mutex = counter->mutex;
+    bool done = false;
+    while (!done) {
+        done = wait_for_pulse(source);
+        if (!done) {
+            mutex_acquire(mutex);
+            counter->count++;
+            mutex_release(mutex);
+        }
+    }
+}
+
+void count_pulses_async(struct counter *counter, int source) {
+    struct count_pulses_data *data = malloc(sizeof(struct count_pulses_data));
+    if (data == 0) abort();
+    data->counter = counter;
+    data->source = source;
+    thread_start(count_pulses, data);
+}
+
+void print_count(struct counter *counter) {
+    struct mutex *mutex = counter->mutex;
+    while (true) {
+        sleep(1000);
+        mutex_acquire(mutex);
+        print_int(counter->count);
+        mutex_release(mutex);
+    }
+}
+
+int main() {
+    struct counter *counter = malloc(sizeof(struct counter));
+    if (counter == 0) abort();
+    counter->count = 0;
+    struct mutex *mutex = create_mutex();
+    counter->mutex = mutex;
+
+    thread_start(print_count, counter);
+
+    while (true) {
+        int source = wait_for_source();
+        count_pulses_async(counter, source);
+    }
+}
+```
+
+ここでは mutex は任意の多くのスレッド間でいつでも共有されうる一方で、前章のプログラム例では mutex は3つのスレッド間で共有されていたことに注意してください。
+これは検証に対して影響を及ぼします:
+前章では mutex チャンクの3分の1をそれぞれのスレッドに与えれば済む一方で、この例での分数の分割はより複雑です。
+
+さらに別の問題もあります:
+`count_pulses` スレッドが終了したとき、それはまだ mutex の分数を所有しています。
+VeriFast はリークチェックでこれをエラーにします。
+一般に、mutex のリークはプログラムのメモリ不足を最終的に引き起こす可能性があります。
+けれども、このプログラムの場合は、1つの mutex のリークは問題にはなりません。
+そして mutex チャンク分数はどのみちリークされ、その mutex を破棄するために再構築さることはありません。
+そのためその分数の係数を慎重に追跡する必要はないのです。
+
+VeriFast は、多くのスレッド間で共有され、決して再構築されないチャンクの取り扱いを簡単にする _ダミー分数_ (_dummy fractions_) と呼ばれる機能を持っています
+具体的には、__leak__ ゴーストコマンドをチャンクに適用すると、そのチャンクを削除せずに、そのチャンクの係数を _ダミー分数係数シンボル_ (_dummy fraction coefficient symbol_)で単純に置換します。
+係数がダミー分数係数シンボルであるようなチャンクは _ダミー分数_ (_dummy fraction_) と呼ばれます。
+VeriFast はそれぞれの関数の最後でリークチェックを行なうとき、ダミー分数でないチャンクのみをエラーにします。
+
+ダミー分数は `[_]chunk(args)` のようなダミーパターンを使った表明で表わされます。
+ダミー係数をともなう表明を消費すると、そのマッチしたチャンクはダミー分数であるべきで、そうでなければそのチャンクのマッチはそのチャンクを暗黙的にリークするので VeriFast はエラーを報告します。
+ダミー係数をともなう表明を生成すると、生成されたチャンクはダミー分数になります。
+
+任意のダミー分数の共有を簡単にするために、ダミー分数表明を消費すると、VeriFast はマッチしたチャンクを自動的に2つに分割します:
+その1つは消費され、もう1つはシンボリックヒープ中の残ります。
+
+__練習問題 25__
+このプログラム例を検証してください。
+mutex チャンクを生成した後、それを直接リークしてください。
+ダミーパターンを使って、表明中で mutex チャンクの分数の係数を表わしてください。
+
+## 25. 文字配列
 
 xxx
