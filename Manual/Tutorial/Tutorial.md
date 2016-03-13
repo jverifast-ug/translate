@@ -2652,4 +2652,261 @@ mutex チャンクを生成した後、それを直接リークしてくださ�
 
 ## 25. 文字配列
 
+標準入力から固定数の文字を読み、それらを二度表示するプログラムを検証してみましょう。
+次は5文字読むバージョンです:
+
+```c
+char getchar();
+void putchar(char c);
+
+int main()
+{
+    char c1 = getchar();
+    char c2 = getchar();
+    char c3 = getchar();
+    char c4 = getchar();
+    char c5 = getchar();
+    for (int i = 0; i < 2; i++) {
+        putchar(c1);
+        putchar(c2);
+        putchar(c3);
+        putchar(c4);
+        putchar(c5);
+    }
+    return 0;
+}
+```
+
+このプログラムは動作します。
+(`getchar` の返り値の型を少し単純化しています; その本当の関数は int を返します。けれどもこのバージョンは正常にコンパイルされ、上手く動作するべきです。)
+このプログラムを実行して `Hello` と入力すると、`HelloHello` が返ります。
+
+けれども明確に、このアプローチはより多い文字数に対して実用的ではありません。
+より多い文字数に対して有効なアプローチの1つは文字の配列を使うことです。
+標準C言語関数 `malloc` を使って配列を確保し、それから再帰関数を使って文字を読み書きしましょう。
+これで、プログラムの最後でその配列を解放することを心配せずにすみます。
+最初に5文字を読むバージョンを再び作ってみましょう。
+
+```c
+char getchar();
+void putchar(char c);
+
+char *malloc(int count);
+
+void getchars(char *start, int count) {
+    if (count > 0) {
+        char c = getchar();
+        *start = c;
+        getchars(start + 1, count - 1);
+    }
+}
+
+void putchars(char *start, int count) {
+    if (count > 0) {
+        char c = *start;
+        putchar(c);
+        putchars(start + 1, count - 1);
+    }
+}
+
+int main() {
+    char *array = malloc(5);
+    getchars(array, 5);
+    putchars(array, 5);
+    putchars(array, 5);
+    return 0;
+}
+```
+
+このプログラムは動作します。
+(ここでは `malloc` の失敗を無視しています。)
+このプログラムを検証してみましょう。
+
+プログラムに対して単純に VeriFast を実行して、エラー箇所を見るのは常に良いアプローチです。
+上記のプログラムを検証すると、VeriFast は関数群が契約を持たないことをエラーにします。
+それぞれの関数に最も単純な実行可能な契約を与えてみましょう:
+
+```c
+//@ requires true;
+//@ ensures true;
+```
+
+これで VeriFast は関数 `getchars` の次の行でエラーになります:
+
+```c
+    *start = c;
+```
+
+この命令文は文字 `c` をアドレス `start` のメモリ位置に書き込んでいます。
+VeriFast はこのような命令文を見つけると、
+その関数がその位置への書き込みパーミッションを持つかチェックします。
+具体的には、`character(start, _)` にマッチするチャンクがシンボリックヒープ中に存在するかチェックします。
+この場合、`getchars` の requires 節にそのチャンクが書かれておらず、この関数はどこか別の所からそれを獲得もしていないので、そのようなチャンクがシンボリックヒープ中に存在しません。
+
+この問題を解決するためには、少なくともパラメータ `count` がゼロより大きいなら、関数 `getchars` を呼び出すどんな関数もアドレス `start` の位置への書き込みパーミッションを与えなけばならいことを、関数 `getchars` の requires 節で指定する必要があります。
+良いマナーとして、ensures 節に指定することで、使い終わったらそのパーミッションを呼び出し元に戻します:
+
+```c
+//@ requires count > 0 ? character(start, _) : true;
+//@ ensures count > 0 ? character(start, _) : true;
+```
+
+再び VeriFast を実行すると、VeriFast が `*start` への割り当てを受け付けます。
+けれども今度は、`getchars` の再帰呼び出しがエラーになります。
+実際、`count` が1より大きいと、この再帰呼び出しにはアドレス `start + 1` の位置にアクセスするためのパーミッションが必要になります。
+契約を拡張してこれを反映してみましょう:
+
+```c
+//@ requires count > 0 ? character(start, _) &*& (count > 1 ? character(start + 1, _) : true) : true;
+//@ ensures count > 0 ? character(start, _) &*& (count > 1 ? character(start + 1, _) : true) : true;
+```
+
+悲しいかな、再び VeriFast を実行すると、当該の再帰呼び出しで再び VeriFast はエラーになります。
+(Verify メニューで arithmetic overflow checking が無効にすることを思い出してください。)
+実際、`count` が2より大きいと、この再帰呼び出しは、アドレス `start + 2` の位置へアクセスするためのパーミッションを必要とします。
+
+再度、契約を修正することはできますが、どこまで行なえば済むのでしょうか？
+戻って `getchars` が行なっていることを考えると、呼び出し `getchars(start, count)` が `start` から `start + count - 1` の領域の位置へのアクセスするためのパーミッションを要求していることに気が付きます。
+どうすればこれを表現できるでしょうか？
+もし5文字までのみをサポートするなら、次のような事前条件を使えます:
+
+```c
+/*@
+requires
+    count <= 0 ? true :
+        character(start, _) &*&
+        (count - 1 <= 0 ? true :
+            character(start + 1, _) &*&
+            (count - 2 <= 0 ? true :
+                character(start + 2, _) &*&
+                (count - 3 <= 0 ? true :
+                    character(start + 3, _) &*&
+                    (count - 4 <= 0 ? true :
+                        character(start + 4, _) &*&
+                        (count - 5 <= 0 ? true :
+                            false)))));
+@*/
+```
+
+事後条件でも同じ表明を使うと、関数 `getchars` は検証できます。
+さらに `putchars` に対して同じ契約を使うと、その関数も検証できます。
+そして変数名 `start` を `result` で置き換えることで得られる、`malloc` の事後条件として同じ表明を使えます。
+これで残る問題は、関数 `main` の最後での5つのメモリ位置をリークしている VeriFast のエラーだけです。
+関数の最後に次のゴースト命令文を挿入することで、そのリークを許容することを VeriFast に指示できます:
+
+```c
+/*@
+leak
+character(array, _) &*& character(array + 1, _) &*& character(array + 2, _) &*&
+character(array + 3, _) &*& character(array + 4, _);
+@*/
+```
+
+これでこのプログラムは検証できます。
+素晴しい!
+
+__練習問題 26__
+100文字を読めるように、このプログラムを修正してください。
+
+この練習問題は終わりましたか？
+まだでしょうか？
+あなたが悪いのではありません。
+もちろん大量にこれらの契約を書くのは困難です。
+
+解決策は _再帰的な述語_ (_recursive predicates_) を使うことです。
+`getchars` の事前条件は再帰的な構造を持っていることに注意してください。
+表明に名前をつけ、その表明自身の中でこの名前を使うことで、無限に続く表明を作ることができます:
+
+```
+predicate characters(char *start, int count) =
+    count <= 0 ? true : character(start, _) &*& characters(start + 1, count - 1);
+```
+
+この述語を5回展開、すなわち `characters` の出現をその定義で5回置換することで、`getchars` の事前条件にとても近いものを得ることができます。
+唯一の違いは __false__ の代わりに `characters(start + 5, count - 5)` が得られることです。
+つまり `characters` は5文字では止まりません; 無限に続くのです。
+
+契約中で `characters` を使うことで、練習問題26を解いてみましょう:
+
+```c
+char getchar(); /*@ requires true; @*/ /*@ ensures true; @*/
+void putchar(char c); /*@ requires true; @*/ /*@ ensures true; @*/
+
+/*@
+predicate characters(char *start, int count) =
+    count <= 0 ? true : character(start, _) &*& characters(start + 1, count - 1);
+@*/
+
+char *malloc(int count);
+    //@ requires true;
+    //@ ensures characters(result, count);
+
+void getchars(char *start, int count)
+    //@ requires characters(start, count);
+    //@ ensures characters(start, count);
+{
+    if (count > 0) {
+        char c = getchar();
+        *start = c;
+        getchars(start + 1, count - 1);
+    }
+}
+
+void putchars(char *start, int count)
+    //@ requires characters(start, count);
+    //@ ensures characters(start, count);
+{
+    if (count > 0) {
+        char c = *start;
+        putchar(c);
+        putchars(start + 1, count - 1);
+    }
+}
+
+int main() /*@ requires true; @*/ /*@ ensures true; @*/
+{
+    char *array = malloc(100);
+    getchars(array, 100);
+    putchars(array, 100);
+    putchars(array, 100);
+    //@ leak characters(array, 100);
+    return 0;
+}
+```
+
+これはまだ完全には検証できません。
+このプログラムでは、`characters` チャンクをその定義で、もしくはその逆を VeriFast は自動的に置換しないのです。
+__open__ と __close__ ゴーストコマンドを挿入することで、明示的にそれを行なう必要があります。
+例えば、上記のプログラムに VeriFast を実行すると、チャンクへのマッチ `character(start, _)` が見つからないので、VeriFast は関数 `getchars` 中の `*start` への割り当てでエラーになります。
+このチャンクは実際には存在します; それは `characters` チャンクの内側に隠れているのです。
+VeriFast が内側の `character` チャンクを見つけられるように、その `characters` チャンクを開く必要があります。
+関数 `getchars` の次のバージョンは検証できます:
+
+```c
+void getchars(char *start, int count)
+    //@ requires characters(start, count);
+    //@ ensures characters(start, count);
+{
+    if (count > 0) {
+        //@ open characters(start, count);
+        char c = getchar();
+        *start = c;
+        getchars(start + 1, count - 1);
+        //@ close characters(start, count);
+    }
+}
+```
+
+関数 `putchars` に同じコマンドを挿入することで、練習問題26への正しい回答が得られます。
+
+__練習問題 27__
+単純な暗号/復号プログラムを実装して検証してください。
+このプログラムは標準入力から10文字の2つの配列を読み込みます。
+それから1つ目の配列のそれぞれの文字を、その文字と2つ目の配列の関連する文字の XOR で置き換えます。
+これを行なう再帰関数を作ってください。
+この関数はその1つ目の配列を標準出力に書き込みます。
+2つの文字 `c1` と `c2` の XOR はC言語では `(char)(c1 ^ c2)` のように書けます。
+
+## 26. Looping over an Array
+
 xxx

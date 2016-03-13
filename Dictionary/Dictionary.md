@@ -228,6 +228,10 @@
 
 "読み書きパーミッション"
 
+### Recursive predicate
+
+"再帰的な述語"
+
 ### Release
 
 "解放"
