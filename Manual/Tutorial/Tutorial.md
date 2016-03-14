@@ -2907,6 +2907,132 @@ __練習問題 27__
 この関数はその1つ目の配列を標準出力に書き込みます。
 2つの文字 `c1` と `c2` の XOR はC言語では `(char)(c1 ^ c2)` のように書けます。
 
-## 26. Looping over an Array
+## 26. 配列に対するループ
+
+標準入力から100文字の列を読み、それを標準出力に二度書く前章のプログラム例は正しいものです。
+けれども、一千万文字を読もうとすると、恐らく動作しないでしょう。
+なぜなら関数 `getchars` と `putchars` は一千万回の再帰呼び出しを実行してしまうからです。
+これではコールスタックを使いつくしてしまうかもしれません。
+(これはC言語コンパイラが末尾再帰最適化を行なわなかった場合です。しかし、C言語標準はコンパイラにそれを要求していません。)
+そこで、これらの関数が再帰の代わりにループを使えるように、これらをより安全に書き直します。
+関数 `getchars` を書き直してみましょう:
+
+```c
+void getchars(char *start, int count)
+    //@ requires characters(start, count);
+    //@ ensures characters(start, count);
+{
+    for (int i = 0; i < count; i++) {
+        char c = getchar();
+        *(start + i) = c;
+    }
+}
+```
+
+このプログラムを検証しようとすると、VeriFast はループ不変条件が必要だというエラーになります。
+It needs a loop invariant so that it can verify the loop body only once, starting from a symbolic state that represents the start of an arbitrary iteration of the loop.
+The loop invariant describes this symbolic state.
+Specifically, it describes the contents of the symbolic heap, as well as any required information about the value of the local variables that are modified by the loop.
+(See Section 8 for more information about loops.)
+
+In the example, at the start of each loop iteration, the symbolic heap contains the `characters` chunk, and the value of variable `i` is nonnegative.
+We encode this as follows:
+
+```c
+void getchars(char *start, int count)
+    //@ requires characters(start, count);
+    //@ ensures characters(start, count);
+{
+    for (int i = 0; i < count; i++)
+        //@ invariant characters(start, count) &*& 0 <= i;
+    {
+        char c = getchar();
+        *(start + i) = c;
+    }
+}
+```
+
+VeriFast now complains that it cannot find the permission to write the character at address `start + i` in the symbolic heap.
+This permission is in fact present, but it is hidden inside the `characters(start, count)` chunk.
+In the easy case, it is sufficient to simply open a chunk in order to reveal the permissions that are hidden inside of it.
+However, in this case, the permission is hidden below multiple layers of the `characters` predicate.
+In fact, it is hidden below exactly `i + 1` layers.
+It would require `i + 1` open operations to reveal the permission.
+We cannot write these operations directly in the program text, since we do not know how many operations to write.
+
+The solution is to first rewrite the `characters(start, count)` chunk into an equivalent set of chunks in such a way that the permission that VeriFast is looking for comes to the surface.
+Notice that the `characters(start, count)` chunk describes the same set of memory permissions as the following pair of chunks:
+
+```
+characters(start, i) &*& characters(start + i, count - i)
+```
+
+If we can rewrite the chunk into this form, we can then simply open the `characters(start + i, count - i)` chunk to obtain our `character(start + i, _)` permission.
+We can perform this rewrite by first performing `i` open operations, to lay bare the first `i` characters, and then performing `i + 1` close operations, to combine these `i` characters into a `characters(start, i)` chunk.
+To perform these operations, we can write a helper function.
+A helper function that serves only to perform ghost operations is best written as a _lemma function_ .
+A lemma function is like an ordinary C function, except that it starts with the __lemma__ keyword and it is written inside an annotation:
+
+```c
+/*@
+lemma void split_characters_chunk(char *start, int i)
+    requires characters(start, ?count) &*& 0 <= i &*& i <= count;
+    ensures characters(start, i) &*& characters(start + i, count - i);
+{
+    if (i == 0) {
+        close characters(start, 0);
+    } else {
+        open characters(start, count);
+        split_characters_chunk(start + 1, i - 1);
+        close characters(start, i);
+    }
+}
+@*/
+```
+
+Like an ordinary function, a lemma function has a contract and a body.
+The contract of the above lemma function, `split_characters_chunk` , states that the function requires a single characters chunk, as well as a value `i` that lies between zero and `count` , and gives back two chunks: one that contains the first `i` characters, and one that contains the remaining `count - i` characters.
+
+The function implementation first checks if i equals zero.
+If it does, the incoming chunk corresponds exactly to the second chunk that needs to be returned.
+The function only needs to generate the first chunk, but since `i` equals zero, this is an empty chunk and can be created simply by closing it.
+
+In case `i` is not equal to zero, the function first opens the incoming chunk.
+This lays bare the first character (the one at `start` ) as well as the `characters` chunk that goes from `start + 1` to the end.
+The function then splits the latter chunk into a part that contains the first `i - 1` characters and a part that contains the remaining `count - i` characters.
+This latter chunk is the second chunk that needs to be returned.
+Finally, it bundles the `character` chunk at `start` up with the `characters(start + 1, i - 1)` chunk that was returned by the recursive call, to obtain the first chunk that needs to be returned.
+
+To verify the assignment to `*(start + i)` in function `getchars` , we now simply need to call the lemma function and then open chunk `characters(start + i, count - i)` :
+
+```c
+void getchars(char *start, int count)
+    //@ requires characters(start, count);
+    //@ ensures characters(start, count);
+{
+    for (int i = 0; i < count; i++)
+        //@ invariant characters(start, count) &*& 0 <= i;
+    {
+        char c = getchar();
+        //@ split_characters_chunk(start, i);
+        //@ open characters(start + i, count - i);
+        *(start + i) = c;
+    }
+}
+```
+
+VeriFast now accepts the assignment.
+It now complains when checking the loop invariant at the end of the loop body.
+It complains that it cannot find chunk `characters(start, count)` .
+Notice that this is again a matter of rewriting the symbolic heap:
+all memory permissions described by `characters(start, count)` are in fact in the symbolic heap, just not in the packaging in which VeriFast expects them.
+To satisfy VeriFast, we need to first close the `characters(start + i, count - i)` chunk again and then call a lemma function that merges the `characters(start, i)` and `characters(start + i, count - i)` chunks back into a single `characters(start, count)` chunk.
+
+__練習問題 28__
+Write the lemma function `merge_characters_chunks` .
+Then insert a call to this function into `getchars` so that `getchars` verifies.
+Then also rewrite `putchars` to use a loop instead of recursion and verify the resulting program.
+
+## 27. Recursive Loop Proofs
 
 xxx
