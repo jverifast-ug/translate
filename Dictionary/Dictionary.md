@@ -66,11 +66,11 @@
 
 ### Dummy fraction
 
-"ダミー分数"
+"ダミー断片"
 
 ### Dummy fraction coefficient symbol
 
-"ダミー分数係数シンボル"
+"ダミー断片係数シンボル"
 
 ## E
 
@@ -90,11 +90,11 @@
 
 ### Fraction
 
-"分数"
+"断片"
 
 ### Fractional permission
 
-"分数パーミッション"
+"分割所有パーミッション"
 
 ### Full permission
 
