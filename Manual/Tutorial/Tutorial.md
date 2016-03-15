@@ -808,8 +808,8 @@ predicate lseg(struct node *first, struct node *last, int count) =
 ```
 
 まだ終わりではありません。
-最初にループに入ったときのループ不変条件書く必要があります。
-次を書くべきです:
+最初にループに入るときのループ不変条件を証明する必要があります。
+つまり、次の式を証明する必要があります。
 
 ```
 lseg(head, head, 0) &*& lseg(head, 0, count)
