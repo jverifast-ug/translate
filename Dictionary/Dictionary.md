@@ -170,6 +170,10 @@
 
 "論理記号"
 
+### Loop contract
+
+"ループ契約"
+
 ## M
 
 ### Modular symbolic execution

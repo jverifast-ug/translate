@@ -3037,4 +3037,144 @@ __練習問題 28__
 
 ## 27. Recursive Loop Proofs
 
+前章での重要な観察結果は、関数 `getchars` の再帰バージョンの検証はループを使ったバージョンの検証よりはるかに簡単であるということです。
+実際、ループを検証するには、そのループによって使われるパーミッション (すなわちヒープチャンク) 全てを表現するようなループ不変条件を管理することが要求されます。
+対照的に、再帰関数の契約はその関数の明確な呼び出しによって使われるパーミッションのみを表現します;
+再帰呼び出しの点では、呼び出し元で使われるパーミッションのいくつかが呼び出し先によって要求されないのであれば、これらのパーミッションは再帰呼び出しの持続を表わす呼び出し元のシンボリックヒープ中に単に留まります。
+
+これは実行時間のパフォーマンスと検証時間の利便性は二者択一であることを意味するのでしょうか？
+幸運にも、そうではありません!
+最近 Thomas Tuerk という研究者が、相当する再帰関数を検証するのと同等の利便性でループを検証するアプローチを示しました。
+具体的には、Tuerk はどのようなループも等価な再帰関数に書き直せると指摘しています。
+次のようなループを考えてみましょう:
+
+```c
+while (condition) {
+    ... body ...
+}
+```
+
+このループは次の呼び出しと等価です
+
+```c
+iter();
+```
+
+このとき関数 `iter` は次のように定義されます
+
+```c
+void iter() {
+    if (condition) {
+        ... body ...
+        iter();
+    }
+}
+```
+
+具体例として、前章での関数 `getchars` を考えてみましょう。
+__for__ ループを __while__ ループで書き換えれば、次のコードが得られます:
+
+```c
+void getchars(char *start, int count) {
+    int i = 0;
+    while (i < count) {
+        char c = getchar();
+        *(start + i) = c;
+        i++;
+    }
+}
+```
+
+これで上記の変換を適用して、このループを等価なローカル再帰関数で置換できます:
+
+```c
+void getchars(char *start, int count) {
+    int i = 0;
+    void iter() {
+        if (i < count) {
+            char c = getchar();
+            *(start + i) = c;
+            i++;
+            iter();
+        }
+    }
+    iter();
+}
+```
+
+この変換ではローカル関数を使っていることに注意してください。
+C言語標準はローカル関数をサポートしませんが、GNU C コンパイラ gcc はサポートしています。
+gcc は上記の関数を正しくコンパイル/実行します。
+
+それぞれのループが等価な再帰関数に書き換えできることを示した後、Tuerk はこれが再帰関数を検証するのと同じ方法でループを検証できることを意味することを示しました:
+その再帰関数に対して契約を提供するのです。
+
+VeriFast はこのアプローチをサポートしています。
+ループを検証するとき、ループ不変条件を指定する代わりに、事前条件と事後条件から成るループ契約を指定できます。
+すると VeriFast は、あたかもそのループがローカル再帰関数を使って書かれているかのように、そのループを検証します。
+これがどのように働くか見るために、最初にローカル再帰関数 `iter` を使う `getchars` 関数のバージョンを検証してみましょう:
+
+```c
+void getchars(char *start, int count)
+    //@ requires characters(start, count);
+    //@ ensures characters(start, count);
+{
+    int i = 0;
+    void iter()
+        //@ requires characters(start + i, count - i);
+        //@ ensures characters(start + old_i, count - old_i);
+    {
+        if (i < count) {
+            //@ open characters(start + i, count - i);
+            char c = getchar();
+            *(start + i) = c;
+            i++;
+            iter();
+            //@ close characters(start + old_i, count - old_i);
+        }
+    }
+    iter();
+}
+```
+
+関数呼び出しが開始時点での変数の値を参照するために、`old_` を接頭辞につけた変数名を使っていることに注意してください。
+VeriFast は現時点ではローカル関数をサポートしていませんが、もしサポートしていたらこの関数の検証は成功するでしょう。
+
+これで __while__ ループを使う `getchars` のバージョンを検証するために必要な残りは、再帰関数に挿入した注釈をループバージョンに移植することだけです:
+
+```c
+void getchars(char *start, int count)
+    //@ requires characters(start, count);
+    //@ ensures characters(start, count);
+{
+    int i = 0;
+    while (i < count)
+        //@ requires characters(start + i, count - i);
+        //@ ensures characters(start + old_i, count - old_i);
+    {
+        //@ open characters(start + i, count - i);
+        char c = getchar();
+        *(start + i) = c;
+        i++;
+        //@ recursive_call();
+        //@ close characters(start + old_i, count - old_i);
+    }
+}
+```
+
+`recursive_call()` を挿入したことに注意してください;
+このゴースト命令文は仮想的な再帰呼び出しが起きる位置を示しています。
+VeriFast はこの関数の検証に成功します。
+
+__練習問題 29__
+__while__ ループを使う `putchars` 関数のバージョンを書いて、それをループ契約を使って検証してください。
+
+__練習問題 30__
+ループ契約を使って11章での `stack_get_count` 関数を検証してください。
+この証明には述語 `lseg` やどのような補題も必要ではありません!
+けれども __while__ ループを __for (;;)__ ループに (もしくは同等な __while (true)__ ループに) 書き換える必要があることに注意してください。
+ループから抜ける前にゴーストコマンドを実行する必要があるためです。
+
+## 28. Tracking Array Contents
+
 xxx
