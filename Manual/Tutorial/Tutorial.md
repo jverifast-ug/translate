@@ -2930,13 +2930,13 @@ void getchars(char *start, int count)
 ```
 
 このプログラムを検証しようとすると、VeriFast はループ不変条件が必要だというエラーになります。
-It needs a loop invariant so that it can verify the loop body only once, starting from a symbolic state that represents the start of an arbitrary iteration of the loop.
-The loop invariant describes this symbolic state.
-Specifically, it describes the contents of the symbolic heap, as well as any required information about the value of the local variables that are modified by the loop.
-(See Section 8 for more information about loops.)
+ループの任意の反復の開始を表わすシンボリック状態から開始して、ループ本体を一度で検証するために、ループ不変条件が必要です。
+ループ不変条件はこのシンボリック状態を表わします。
+具体的には、シンボリックヒープの中身と、ループによって変更されるローカル変数の値に関して要求される情報をそれは表わします。
+(ループに関する情報詳細は8章を見てください。)
 
-In the example, at the start of each loop iteration, the symbolic heap contains the `characters` chunk, and the value of variable `i` is nonnegative.
-We encode this as follows:
+この例では、それぞれのループ反復の開始において、シンボリックヒープは `characters` チャンクを含み、変数 `i` の値は非負です。
+これを次のようにエンコードしましょう:
 
 ```c
 void getchars(char *start, int count)
@@ -2952,26 +2952,26 @@ void getchars(char *start, int count)
 }
 ```
 
-VeriFast now complains that it cannot find the permission to write the character at address `start + i` in the symbolic heap.
-This permission is in fact present, but it is hidden inside the `characters(start, count)` chunk.
-In the easy case, it is sufficient to simply open a chunk in order to reveal the permissions that are hidden inside of it.
-However, in this case, the permission is hidden below multiple layers of the `characters` predicate.
-In fact, it is hidden below exactly `i + 1` layers.
-It would require `i + 1` open operations to reveal the permission.
-We cannot write these operations directly in the program text, since we do not know how many operations to write.
+今度は VeriFast はシンボリックヒープ中のアドレス `start + i` に文字を書くためのパーミッションが見つからないというエラーになります。
+実際にはこのパーミッションは存在しますが、`characters(start, count)` チャンクの内側に隠れています。
+簡単な場合なら、内側のパーミッションを見せるためには、単純にチャンクを開けば十分です。
+けれどもこの場合、パーミッションは述語 `characters` の多層のレイヤーの中に隠れています。
+実際、パーミッションはきっちり `i + 1` 層のレイヤーの中に隠れています。
+パーミッションを見せるために、`i + 1` 回の open 操作を要求してしまいます。
+何回操作を書けば良いかわからないので、プログラムテキスト中にこのような操作を直接書くことはできません。
 
-The solution is to first rewrite the `characters(start, count)` chunk into an equivalent set of chunks in such a way that the permission that VeriFast is looking for comes to the surface.
-Notice that the `characters(start, count)` chunk describes the same set of memory permissions as the following pair of chunks:
+解決策は、VeriFast が探すパーミッションが表面に来るような方法で、`characters(start, count)` チャンクをチャンクの同等な集合に書き換えることです。
+`characters(start, count)` チャンクは次のチャンクのペアと同じメモリパーミッションの集合を表わすことに注意してください:
 
 ```
 characters(start, i) &*& characters(start + i, count - i)
 ```
 
-If we can rewrite the chunk into this form, we can then simply open the `characters(start + i, count - i)` chunk to obtain our `character(start + i, _)` permission.
-We can perform this rewrite by first performing `i` open operations, to lay bare the first `i` characters, and then performing `i + 1` close operations, to combine these `i` characters into a `characters(start, i)` chunk.
-To perform these operations, we can write a helper function.
-A helper function that serves only to perform ghost operations is best written as a _lemma function_ .
-A lemma function is like an ordinary C function, except that it starts with the __lemma__ keyword and it is written inside an annotation:
+もしこのチャンクをこのような形式に書き換えられたら、`characters(start + i, count - i)` チャンクを単純に開けば `character(start + i, _)` パーミッションが得られます。
+`i` 文字を `characters(start, i)` チャンクに結合するために、はじめに `i` 回 open 操作を行ない、最初の `i` 文字を剥き出しにし、そして `i + 1` 回 close 操作を行なうことで、この書き換えができます。
+これらの操作を行なうために、ヘルパー関数を書くことができます。
+ゴースト操作をのみ行なう役目を持つヘルパー関数は _補題関数_ (_lemma function_) として書くのが良いでしょう。
+補題関数は通常のC言語関数と似ていますが、__lemma__ キーワードで開始し、注釈の中に書きます:
 
 ```c
 /*@
@@ -2990,20 +2990,22 @@ lemma void split_characters_chunk(char *start, int i)
 @*/
 ```
 
-Like an ordinary function, a lemma function has a contract and a body.
-The contract of the above lemma function, `split_characters_chunk` , states that the function requires a single characters chunk, as well as a value `i` that lies between zero and `count` , and gives back two chunks: one that contains the first `i` characters, and one that contains the remaining `count - i` characters.
+通常の関数と同じく、補題関数は契約と本体を持ちます。
+上記の補題関数の契約 `split_characters_chunk` は、この関数が1つの文字チャンクを要求し、値 `i` がゼロ以上 `count` 以下であり、2つのチャンクを戻すことを表明しています:
+1つは最初の `i` 文字を含み、もう1つは残りの `count - i` 文字を含みます。
 
-The function implementation first checks if i equals zero.
-If it does, the incoming chunk corresponds exactly to the second chunk that needs to be returned.
-The function only needs to generate the first chunk, but since `i` equals zero, this is an empty chunk and can be created simply by closing it.
+この関数の実装では最初に `i` がゼロに等しいかチェックします。
+もし等しければ、入力のチャンクは返されるべき2つ目のチャンクに相当します。
+この関数は1つ目のチャンクを生成するだけです。
+しかし `i` はゼロと等しいので、このチャンクは空のチャンクで、単純に閉じるだけで生成できます。
 
-In case `i` is not equal to zero, the function first opens the incoming chunk.
-This lays bare the first character (the one at `start` ) as well as the `characters` chunk that goes from `start + 1` to the end.
-The function then splits the latter chunk into a part that contains the first `i - 1` characters and a part that contains the remaining `count - i` characters.
-This latter chunk is the second chunk that needs to be returned.
-Finally, it bundles the `character` chunk at `start` up with the `characters(start + 1, i - 1)` chunk that was returned by the recursive call, to obtain the first chunk that needs to be returned.
+`i` がゼロと等しくなかった場合、この関数ははじめに入力チャンクを開きます。
+これは (`start` にある1つの) 最初の文字と `start + 1` から最後までの `characters` チャンクを剥き出しにします。
+それからこの関数は、後者のチャンクを最初の `i - 1` 文字を含む部分と残りの `count - i` 文字を含む部分とに分割します。
+この後者のチャンクは返されるべき2番目のチャンクです。
+最後に、返されるべき1番目のチャンクを得るために、この関数は `start` にある `character` チャンクと、再帰呼び出しによって返された `characters(start + 1, i - 1)` チャンクをまとめます。
 
-To verify the assignment to `*(start + i)` in function `getchars` , we now simply need to call the lemma function and then open chunk `characters(start + i, count - i)` :
+関数 `getchars` 中の `*(start + i)` への割り当てを検証するために、ここではこの補題関数を呼び出して、それからチャンク `characters(start + i, count - i)` を開く必要があります:
 
 ```c
 void getchars(char *start, int count)
@@ -3021,17 +3023,17 @@ void getchars(char *start, int count)
 }
 ```
 
-VeriFast now accepts the assignment.
-It now complains when checking the loop invariant at the end of the loop body.
-It complains that it cannot find chunk `characters(start, count)` .
-Notice that this is again a matter of rewriting the symbolic heap:
-all memory permissions described by `characters(start, count)` are in fact in the symbolic heap, just not in the packaging in which VeriFast expects them.
-To satisfy VeriFast, we need to first close the `characters(start + i, count - i)` chunk again and then call a lemma function that merges the `characters(start, i)` and `characters(start + i, count - i)` chunks back into a single `characters(start, count)` chunk.
+これで VeriFast はこの割り当てを受け付けます。
+今度はループ本体の終了でのループ不変条件をチェックしようとして VeriFast はエラーになります。
+チャンク `characters(start, count)` が見つからないためにエラーとなるのです。
+これには再びわずかにシンボリックヒープを書き換えるだけであることに注意してください:
+`characters(start, count)` で表わされた全てのメモリパーミッションは実際にはシンボリックヒープ中に存在し、VeriFast が望む形になっていないだけです。
+VeriFast を満足させるために、はじめに `characters(start + i, count - i)` チャンクを再び閉じて、それから `characters(start, i)` と `characters(start + i, count - i)` チャンクを1つの `characters(start, count)` チャンクに戻す補題関数を呼び出す必要があります。
 
 __練習問題 28__
-Write the lemma function `merge_characters_chunks` .
-Then insert a call to this function into `getchars` so that `getchars` verifies.
-Then also rewrite `putchars` to use a loop instead of recursion and verify the resulting program.
+補題関数 `merge_characters_chunks` を書いてください。
+それから `getchars` を検証できるように、この関数の呼び出しを`getchars` に挿入してください。
+さらに再帰の代わりにループを使うように `putchars` を書き換えて、結果得られたプログラムを検証してください。
 
 ## 27. Recursive Loop Proofs
 

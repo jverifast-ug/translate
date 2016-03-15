@@ -150,6 +150,10 @@
 
 "補題"
 
+### Lemma function
+
+"補題関数"
+
 ### Linked list segment
 
 "連結リストセグメント"
