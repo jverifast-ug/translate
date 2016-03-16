@@ -3175,6 +3175,118 @@ __練習問題 30__
 けれども __while__ ループを __for (;;)__ ループに (もしくは同等な __while (true)__ ループに) 書き換える必要があることに注意してください。
 ループから抜ける前にゴーストコマンドを実行する必要があるためです。
 
-## 28. Tracking Array Contents
+## 28. 配列の内容物を追跡する
+
+1つの文字配列の内容物を別の配列にコピーする `memcpy` 関数の次の実装の関数的な正しさを検証したいと仮定してみましょう。
+
+```c
+void memcpy(char *dest, char *src, int count) {
+    for (int i = 0; i < count; i++) {
+        dest[i] = src[i];
+    }
+}
+```
+
+関数的な正しさを明記するために、この関数が返るときに `dest` 配列の内容物は `src` 配列の内容物と等しいことを、`memcpy` を表わす契約は表現しなければなりません。
+これは、これまでの章での述語 `characters` は文字配列のサイズのみを明記していて、その内容物に言及していないので、この述語を使うことはできないことを意味しています。
+配列によって保持される文字のリストを明記する述語パラメータを追加すべきです:
+
+```
+predicate chars(char *array, int count; list<char> cs) =
+    count == 0 ?
+        cs == nil
+    :
+        character(array, ?c) &*& chars(array + 1, count - 1, ?cs0) &*& cs == cons(c, cs0);
+```
+
+この述語を使うことで、次のように `memcpy` 関数の挙動を完全に指示できます:
+
+```c
+void memcpy(char *dest, char *src, int count)
+    //@ requires chars(dest, count, _) &*& [?f]chars(src, count, ?cs);
+    //@ ensures chars(dest, count, cs) &*& [f]chars(src, count, cs);
+```
+
+実際、この述語は VeriFast において "公式な" 文字配列の述語です:
+それは多数の便利な補題と一緒に `prelude.h` で宣言され、いくらかの目的に VeriFast で使われます。
+例えば、次の関数は `memcpy` に対して上記の契約を検証しています:
+
+```c
+void test()
+    //@ requires true;
+    //@ ensures true;
+{
+    char buffer1[7] = "Hello!";
+    char buffer2[7];
+    memcpy(buffer2, buffer1, 7);
+    assert(buffer2[5] == ’!’);
+}
+```
+
+実際、ローカルに文字配列を宣言すると VeriFast は `chars` チャンクを生成します。
+
+述語 `chars` の定義におけるセミコロンに注意してください:
+これは2つの入力パラメータ (`array` と `count`) と1つの出力パラメータ (`cs`) が正確に宣言されていることを意味しています。
+21章と22章で解説した通り、これで VeriFast は断片 `chars` を結合し、ある環境下では `chars` チャンクに対して自動的に __open__ と __close__ を呼び出します。
+
+VeriFast は、`chars` チャンクに対する表明の可読性をを向上させるために、_配列スライス構文_ (_array slice syntax_) をサポートしています。
+`a` の型が `char *` であるとき、表記 `a[i..n] |-> ?vs` は `chars(a + i, n - i, ?vs)` と等価です。
+配列スライス構文を使うことで、次のようにより若干可読性の高い関数 `memcpy` の契約を書くことができます:
+
+```c
+void memcpy(char *dest, char *src, int count)
+    //@ requires dest[0..count] |-> _ &*& [?f]src[0..count] |-> ?cs;
+    //@ ensures dest[0..count] |-> cs &*& [f]src[0..count] |-> cs;
+```
+
+これでこの実装を検証できます。
+配列を扱う際によくあることですが、(27章で見たように) ループ不変条件の代わりにループ契約を使うのが効果的です。
+
+```c
+void memcpy(char *dest, char *src, int count)
+    //@ requires dest[0..count] |-> _ &*& [?f]src[0..count] |-> ?cs;
+    //@ ensures dest[0..count] |-> cs &*& [f]src[0..count] |-> cs;
+{
+    for (int i = 0; ; i++)
+        //@ requires dest[i..count] |-> _ &*& [f]src[i..count] |-> ?cs0;
+        //@ ensures dest[old_i..count] |-> cs0 &*& [f]src[old_i..count] |-> cs0;
+    {
+        //@ open chars(dest + i, _, _);
+        //@ open chars(src + i, _, _);
+        if (i == count) {
+            break;
+        }
+        dest[i] = src[i];
+    }
+}
+```
+
+ループ契約を使う際によくあることですが、ループを抜ける (すなわち __break__ 命令文の) 前にゴーストコマンドを挿入するために、ループ条件をループ本体内に移動させなければならなかったことに注意してください。
+
+__練習問題 31__
+2つの配列が同じ内容物を持つなら、関数 `memcmp` の次の実装がゼロを返すことを明記して検証してください。
+注意: 表明中のブール式が括弧ではじまる場合、そのブール式に接頭辞 `true ==` を付けなければならなりません、例えば `true == ((a == b) == (c == d))` です;
+これは VeriFast パーサの制限です。
+
+```c
+int memcmp(char *p1, char *p2, int count) {
+    int result = 0;
+    for (int i = 0; ; i++) {
+        if (i == count) {
+            break;
+        }
+        if (p1[i] < p2[i]) {
+            result = -1; break;
+        }
+        if (p1[i] > p2[i]) {
+            result = 1; break;
+        }
+    }
+    return result;
+}
+```
+
+## 29. 文字列
+
 
 xxx

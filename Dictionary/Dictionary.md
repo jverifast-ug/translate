@@ -22,6 +22,10 @@
 
 "算術オーバーフロー"
 
+### Array slice syntax
+
+"配列スライス構文"
+
 ### Assertion
 
 "表明"
