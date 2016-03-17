@@ -1429,7 +1429,7 @@ int main()
 もし型 `int_predicate` で与えられた関数に関連した `int_predicate_data` の定義を具体的に指すことができれば、この問題は解決できます。
 これは正確には _述語族_ (_predicate families_) で可能になります。
 述語族は通常の述語に似ていますが、それぞれの定義が異なる _インデックス_ (_index_) と関連付けられた複数の定義を持つことができる点で異なります。
-述語族のインデックスは関数ポインタでなけれなりません。
+述語族のインデックスは関数ポインタでなければなりません。
 
 述語族を適用すると、スタックモジュールを表わす次のような定義が得られます:
 
@@ -1449,9 +1449,9 @@ void stack_filter(struct stack *stack, int_predicate *p, void *data)
     //@ ensures stack(stack, _) &*& int_predicate_data(p)(data);
 ```
 
-関数の型の契約中で、関数+ポインタを `this` で参照できることに注意してください。
+関数の型の契約中で、関数ポインタを `this` で参照できることに注意してください。
 
-クライアントは次のように定義できます:
+クライアントは次のように検証できます:
 
 ```c
 struct neq_a_data {
@@ -1679,7 +1679,7 @@ struct vector *create_vector(int x, int y)
 表明 `stack(s, ?values)` を使ってその1番目を表わすことができ、その2番目を表わすために再帰的な述語を容易に書くことができます:
 
 ```
-redicate vectors(list<struct vector *> vs) =
+predicate vectors(list<struct vector *> vs) =
     switch (vs) {
         case nil: return true;
         case cons(v, vs0): return vector(v) &*& vectors(vs0);
@@ -3229,7 +3229,7 @@ void test()
 これは2つの入力パラメータ (`array` と `count`) と1つの出力パラメータ (`cs`) が正確に宣言されていることを意味しています。
 21章と22章で解説した通り、これで VeriFast は断片 `chars` を結合し、ある環境下では `chars` チャンクに対して自動的に __open__ と __close__ を呼び出します。
 
-VeriFast は、`chars` チャンクに対する表明の可読性をを向上させるために、_配列スライス構文_ (_array slice syntax_) をサポートしています。
+VeriFast は、`chars` チャンクに対する表明の可読性を向上させるために、_配列スライス構文_ (_array slice syntax_) をサポートしています。
 `a` の型が `char *` であるとき、表記 `a[i..n] |-> ?vs` は `chars(a + i, n - i, ?vs)` と等価です。
 配列スライス構文を使うことで、次のようにより若干可読性の高い関数 `memcpy` の契約を書くことができます:
 
