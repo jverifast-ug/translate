@@ -3359,4 +3359,250 @@ __練習問題 32__
 
 ## 30. ポインタの配列
 
-xxx
+前章では文字の配列に対するサポートを VeriFast に導入しました。
+符号無し文字、整数、符号無し整数、そしてポインタ、の配列に対して同様のサポートがあります。
+この章では、クラス内の生徒の名前を追跡する単純なアプリケーションのメモリ安全性を検証するために、ポインタの配列対するVeriFast サポートを使います。
+次のプログラムは生徒の名前のリストを読み、それからユーザに一定時間で k 番目の生徒の名前を検索することを許します。
+ユーザが無効な生徒の番号を入力したら、このプログラムは全ての確保したメモリを解放してから終了します。
+
+```c
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+
+int read_int() {
+    int x;
+    int scanf_result = scanf("%i", &x);
+    if (scanf_result < 1) abort();
+    return x;
+}
+
+char *read_line() {
+    char buffer[100];
+    int scanf_result = scanf(" %99[^\n]", buffer);
+    if (scanf_result < 1) abort();
+    char *result = strdup(buffer);
+    if (result == 0) abort();
+    return result;
+}
+
+int main() {
+    printf("How many students do you have? ");
+    int n = read_int();
+    if (n < 0 || 0x20000000 <= n) abort();
+    char **names = malloc(n * sizeof(char **));
+    if (names == 0) abort();
+    for (int i = 0; i != n; i++) {
+        printf("Please enter the name of student number %d: ", i + 1);
+        char *name = read_line();
+        printf("Adding ’%s’...\n", name);
+        names[i] = name;
+    }
+
+    for (;;) {
+        printf("Please enter a student number: ");
+        int k = read_int();
+        if (k < 1 || n < k) {
+            printf("Student number out of range. Terminating...\n");
+            break;
+        } else {
+            char *name = names[k - 1];
+            printf("Student number %d is called %s.\n", k, name);
+        }
+    }
+
+    for (int i = 0; i != n; i++) {
+        free(names[i]);
+    }
+    free(names);
+
+    return 0;
+}
+```
+
+ヘルパー関数 `read_int` は、標準入力から (10進数表記もしくは16進数表記の) 整数値を読み、それを変数 `x` に保存するために、(ヘッダファイル `stdio.h` で宣言された) 標準C言語関数 `scanf` を使います。
+同様にヘルパー関数 `read_line` は、改行文字ではない最大99文字の列、すなわち最大99文字の1行を読み、それを (スタックに確保された) 文字配列 `buf` に保存するために、`scanf` を使います。
+`scanf` の返り値は読み出しに成功した要素の数を示します。
+それから、`read_line` は (ヘッダファイル `string.h` で宣言された POSIX 標準の) ライブラリ関数 `strdup` を使って、`buffer` 中のゼロ終端された文字列を新たにヒープに確保したメモリブロックにコピーします。
+メモリ不足のためにこの操作に失敗した場合、`strdup` は 0 を返します。
+
+関数 `read_int` の検証は自明です。
+関数 `read_line` の検証には困難が1つあります:
+`scanf` 呼び出しの後、配列 `buffer` は `chars` チャンクで表わされますが、関数 `strdup` は `string` チャンクを要求します。
+幸運にも、`prelude.h` で宣言された補題 `chars_separate_string` を使って、ゼロ文字を含むどのような文字配列も `string` チャンクに展開できます。
+関数 `read_line` が返るとその配列は `chars` チャンクとして再び有効になるべきなので、`string` チャンクを `chars` チャンクに結合するために `strdup` 呼び出しの後で補題 `chars_unseparate_string` を呼び出すべきです。
+
+この main 関数では、検証は3つのループそれぞれに注釈を要求します。
+最初のループに注目しましょう。
+このループは `names` 配列を前から後へ辿っているので、ループ契約を使います。
+このループはその配列へのアクセスを要求します;
+どうやればこれを明記できるでしょうか？
+どうやって VeriFast は `malloc` 命令文で確保された配列を表わすのでしょうか？
+実際には、もし `malloc` 呼び出しが `T **x = malloc(n * sizeof(T *))` の形なら、VeriFast は `pointers(x, n, _)` チャンクを生成します。
+述語 `pointers` は `prelude.h` で定義され、(28章で見た) 述語 `chars` に似ています:
+
+```
+predicate pointers(void **pp, int count; list<void *> ps) =
+    count == 0 ?
+        ps == nil
+    :
+        pointer(pp, ?p) &*& pointers(pp + 1, count - 1, ?ps0) &*& ps == cons(p, ps0);
+```
+
+`chars` チャンクと同様に、VeriFast は `pointers` チャンクに対する配列スライス構文をサポートしています:
+`a` が型 `T **` であるとき、表記 `a[i..n] |-> ?ps`は `pointers(a + i, n - i, ?ps)` と等価です。
+したがって、関数 `main` 中の最初のループに対する適切な事前条件は次のようになります:
+
+```c
+//@ requires names[i..n] |-> _;
+```
+
+このループは、ゼロ終端された文字列を含むヒープに確保されたメモリブロックへのポインタを、配列 `names` のそれぞれの要素に保管します。
+したがって、このループの事後条件はその配列自身だけでなくこれらのメモリブロックも同時に明記すべきです。
+17章で議論した通り、述語 `foreach` を使ってリストのそれぞれの要素を表わすチャンクの存在を明記できます。
+したがって、このループに対する妥当な事後条件は次のようになるでしょう:
+
+```c
+//@ ensures names[old_i..n] |-> ?ps &*& foreach(ps, student);
+```
+
+where predicate `student` is defined as
+
+```
+predicate student(char *name) = string(name, ?cs) &*& malloc_block_chars(name, length(cs) + 1);
+```
+
+(Note: allocating an array a of n characters produces a `malloc_block_chars(a, n)` chunk;
+ similarly, allocating an array `a` of `n` pointers produces a `malloc_block_pointers(a, n)` chunk.)
+The above postcondition would work, but we can reduce the number of __open__ and __close__ statements required to work with these chunks by using precise variants (see Section 22).
+We can declare predicate `student` as precise as follows:
+
+```
+predicate student(char *name;) = string(name, ?cs) &*& malloc_block_chars(name, length(cs) + 1);
+```
+
+VeriFast comes with a _ghost header file_ `listex.gh` (to be included using a ghost include directive `//@ #include <listex.gh>` ) that declares a precise variant of predicate `foreach` , called `foreachp` :
+
+```
+predicate foreachp<t>(list<t> xs, predicate(t;) p;) =
+    xs == nil ?
+        emp
+    :
+        xs == cons(head(xs), tail(xs)) &*& p(head(xs)) &*& foreachp(tail(xs), p);
+```
+
+Using these precise predicates, we get the following postcondition for the first loop:
+
+```c
+//@ ensures names[old_i..n] |-> ?ps &*& foreachp(ps, student);
+```
+
+The body of the first loop now verifies without any annotations... almost.
+VeriFast does not realize that if `i == n` , then `ps == nil` .
+This causes verification of the path that exits the loop to fail.
+We need to force a case split by moving the loop condition into the loop body and inserting an __open__ statement at the top of the body:
+
+```c
+for (int i = 0; ; i++)
+//@ requires names[i..n] |-> _;
+//@ ensures names[old_i..n] |-> ?ps &*& foreachp(ps, student);
+{
+//@ open pointers(_, _, _);
+if (i == n) {
+break;
+}
+printf("Please enter the name of student number %d: ", i + 1);
+char *name = read_line();
+printf("Adding ’%s’...\n", name);
+names[i] = name;
+}
+```
+
+The first loop now verifies.
+
+The second loop differs from the first one in that it does not traverse the loop linearly;
+rather, it performs random access.
+Therefore, we use an ordinary loop invariant:
+
+```c
+//@ invariant names[0..n] |-> ?ps &*& foreachp(ps, student);
+```
+
+In the first loop, the array element access `names[i]` caused an auto-open of the `pointers(names + i, n - i, _)` chunk, laying bare the `pointer(names + i, _)` chunk required by the element access (see Section 13).
+In the second loop, the `names[k - 1]` access cannot be verified in this way, since the required `pointer` chunk is in the middle of the `pointers` chunk, rather than in the front;
+it would require `k` __open__ operations to lay it bare, and the auto-open feature cannot handle this.
+However, the access verifies anyway, because VeriFast recognizes this access as a random access and treats it specially.
+In particular, if, when evaluating an array access of the form `a[i]` , VeriFast finds a chunk `pointers(a, n, ps)` such that `0 <= i < n` , it considers the access to be valid and returns `nth(i, ps)` as the result of the access.
+The fixpoint function `nth` is declared in header file `list.h` ;
+`nth(i, ps)` returns the `i` ’th element of the list `ps` .
+
+This deals with the array access itself, but there is another problem: the `printf` call requires the `string` chunk for the string pointed to by element `k - 1` .
+This chunk is inside the `foreachp` chunk.
+We can extract it using lemma `foreachp_remove_nth` declared in ghost header `listex.gh` :
+
+```
+lemma void foreachp_remove_nth<t>(int n);
+    requires foreachp<t>(?xs, ?p) &*& 0 <= n &*& n < length(xs);
+    ensures foreachp<t>(remove_nth(n, xs), p) &*& p(nth(n, xs));
+```
+
+It uses the fixpoint function `remove_nth` declared in `list.h`.
+
+Once the `student` chunk for element `k - 1` is available, it is auto-opened and the `printf` call verifies.
+After the `printf` call, we need to merge the `student` chunk back into the `foreachp` chunk using the companion lemma `foreachp_unremove_nth` :
+
+```
+lemma void foreachp_unremove_nth<t>(list<t> xs, int n);
+    requires foreachp<t>(remove_nth(n, xs), ?p) &*& 0 <= n &*& n < length(xs) &*& p(nth(n, xs));
+    ensures foreachp<t>(xs, p);
+```
+
+These two lemma calls are the only annotations required to verify the body of the second loop.
+
+The third loop again traverses the loop front to back;
+a loop spec is indicated.
+Since the loop deallocates the memory blocks holding the student names, the `foreachp` chunk disappears from the postcondition:
+
+```c
+//@ requires names[i..n] |-> ?ps &*& foreachp(ps, student);
+//@ ensures names[old_i..n] |-> _;
+```
+
+Verifying the body of the loop requires a few annotations.
+Firstly, on the path that exits the loop, we get a leak error, again because VeriFast does not realize that `i == n` means that `ps == nil` .
+Like in the first loop, we need to move the loop condition into the loop body and insert an explicit __open__ of the pointers chunk.
+
+The second problem is that the `free` call is not satisfied:
+a `free(a)` call where `a` is of type `char *` looks for a `malloc_block_chars(a, n)` chunk and a `chars(a, n, _)` chunk.
+The `malloc_block_chars` chunk is available inside the `foreachp` chunk, but the `chars` chunk is not;
+the memory block is instead described by a `string` chunk.
+Therefore, we need to transform the `string` chunk into a `chars` chunk.
+A lemma `string_to_chars` is available for this purpose in header `prelude.h` .
+We insert a call of this lemma before the `free` call.
+
+The third problem is that the `string_to_chars` call is not satisfied.
+The `string` chunk that it looks for can be obtained by opening the `foreachp` chunk and then opening the resulting `student` chunk,
+but the auto-open feature does not see this because the `student` chunk is not _statically_ inside the `foreachp` chunk;
+rather, it is inside the `foreachp` chunk only if its second argument is the name of the `student` predicate.
+The auto-open feature may support this scenario in the future, but for now we need to explicitly open the `foreachp` chunk.
+The final proof of the third loop looks as follows:
+
+```c
+for (int i = 0; ; i++)
+    //@ requires names[i..n] |-> ?ps &*& foreachp(ps, student);
+    //@ ensures names[old_i..n] |-> _;
+{
+    //@ open pointers(_, _, _);
+    if (i == n) {
+        break;
+    }
+    //@ open foreachp(_, _);
+    //@ string_to_chars(names[i]);
+    free(names[i]);
+}
+```
+
+The program now verifies.
+
+__練習問題 33__
+Verify the program (available as `students.c` in directory `tutorial` of the VeriFast distribution).
