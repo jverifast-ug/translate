@@ -3466,22 +3466,22 @@ predicate pointers(void **pp, int count; list<void *> ps) =
 //@ ensures names[old_i..n] |-> ?ps &*& foreach(ps, student);
 ```
 
-where predicate `student` is defined as
+このとき述語 `student` は次のように定義されます:
 
 ```
 predicate student(char *name) = string(name, ?cs) &*& malloc_block_chars(name, length(cs) + 1);
 ```
 
-(Note: allocating an array a of n characters produces a `malloc_block_chars(a, n)` chunk;
- similarly, allocating an array `a` of `n` pointers produces a `malloc_block_pointers(a, n)` chunk.)
-The above postcondition would work, but we can reduce the number of __open__ and __close__ statements required to work with these chunks by using precise variants (see Section 22).
-We can declare predicate `student` as precise as follows:
+(注意: `n` 個の文字の配列 `a` の確保は `malloc_block_chars(a, n)` チャンクを生成します; 同様に、`n` 個のポインタの配列 `a` の確保は `malloc_block_pointers(a, n)` チャンクを生成します。)
+上記の事後条件は動作しますが、(22章で見たように) 正確なバリアントを使うことで、これらのチャンクと動作するのに必要な __open__ と __close__ 命令文の数を減らすことができます。
+次のように正確な述語 `student` を宣言できます:
 
 ```
 predicate student(char *name;) = string(name, ?cs) &*& malloc_block_chars(name, length(cs) + 1);
 ```
 
-VeriFast comes with a _ghost header file_ `listex.gh` (to be included using a ghost include directive `//@ #include <listex.gh>` ) that declares a precise variant of predicate `foreach` , called `foreachp` :
+VeriFast は _ゴーストヘッダファイル_ (_ghost header file_) を使います (ゴーストインクルード命令 `//@ #include <listex.gh>` を使ってインクルードされます)。
+これは `foreachp` と名付けられた述語 `foreach` の正確なバリアントを宣言しています:
 
 ```
 predicate foreachp<t>(list<t> xs, predicate(t;) p;) =
@@ -3491,54 +3491,55 @@ predicate foreachp<t>(list<t> xs, predicate(t;) p;) =
         xs == cons(head(xs), tail(xs)) &*& p(head(xs)) &*& foreachp(tail(xs), p);
 ```
 
-Using these precise predicates, we get the following postcondition for the first loop:
+これらの正確な述語を使うことで、最初のループに対して次の事後条件が得られます:
 
 ```c
 //@ ensures names[old_i..n] |-> ?ps &*& foreachp(ps, student);
 ```
 
-The body of the first loop now verifies without any annotations... almost.
-VeriFast does not realize that if `i == n` , then `ps == nil` .
-This causes verification of the path that exits the loop to fail.
-We need to force a case split by moving the loop condition into the loop body and inserting an __open__ statement at the top of the body:
+これで最初のループの本体は、ほとんどどのような注釈もなしに検証できます。
+VeriFast は `i == n` なら `ps == nil` であることを理解しません。
+このため、このループから抜けるパスの検証に失敗します。
+ループ条件をループ本体に移動し、本体の先頭に __open__ 命令文を挿入することで、場合分けを強制する必要があります:
 
 ```c
 for (int i = 0; ; i++)
-//@ requires names[i..n] |-> _;
-//@ ensures names[old_i..n] |-> ?ps &*& foreachp(ps, student);
+    //@ requires names[i..n] |-> _;
+    //@ ensures names[old_i..n] |-> ?ps &*& foreachp(ps, student);
 {
-//@ open pointers(_, _, _);
-if (i == n) {
-break;
-}
-printf("Please enter the name of student number %d: ", i + 1);
-char *name = read_line();
-printf("Adding ’%s’...\n", name);
-names[i] = name;
+    //@ open pointers(_, _, _);
+    if (i == n) {
+        break;
+    }
+    printf("Please enter the name of student number %d: ", i + 1);
+    char *name = read_line();
+    printf("Adding ’%s’...\n", name);
+    names[i] = name;
 }
 ```
 
-The first loop now verifies.
+これで最初のループは検証できます。
 
-The second loop differs from the first one in that it does not traverse the loop linearly;
-rather, it performs random access.
-Therefore, we use an ordinary loop invariant:
+2番目のループは、そのループを直線的に辿らない点で、最初のループと異なります;
+どちらかといえばランダムなアクセスを行ないます。
+したがって、通常のループ不変条件を使います:
 
 ```c
 //@ invariant names[0..n] |-> ?ps &*& foreachp(ps, student);
 ```
 
-In the first loop, the array element access `names[i]` caused an auto-open of the `pointers(names + i, n - i, _)` chunk, laying bare the `pointer(names + i, _)` chunk required by the element access (see Section 13).
-In the second loop, the `names[k - 1]` access cannot be verified in this way, since the required `pointer` chunk is in the middle of the `pointers` chunk, rather than in the front;
-it would require `k` __open__ operations to lay it bare, and the auto-open feature cannot handle this.
-However, the access verifies anyway, because VeriFast recognizes this access as a random access and treats it specially.
-In particular, if, when evaluating an array access of the form `a[i]` , VeriFast finds a chunk `pointers(a, n, ps)` such that `0 <= i < n` , it considers the access to be valid and returns `nth(i, ps)` as the result of the access.
-The fixpoint function `nth` is declared in header file `list.h` ;
-`nth(i, ps)` returns the `i` ’th element of the list `ps` .
+最初のループでは、配列要素アクセス `names[i]` は `pointers(names + i, n - i, _)` チャンクの自動 open を引き起こし、(13章で見たように) その要素アクセスで要求された `pointer(names + i, _)` チャンクをむき出しにしました。
+2番目のループでは、要求された `pointer` チャンクは `pointers` チャンクの前方ではなく中にあるので、`names[k - 1]` アクセスはこの方法では検証できません;
+それをむき出しにするには `k` 回の __open__ 操作が必要で、自動 open 機能はこれを扱えません。
+これども、VeriFast はこのアクセスをランダムアクセスとして認識して、それを特別に扱うのでこのアクセスの検証は成功します。
+特に、もし `a[i]` の形の配列アクセスを評価するとき VeriFast が `0 <= i < n` であるようなチャンク `pointers(a, n, ps)` を見つけると、そのアクセスを有効だと見なして、そのアクセスの結果として `nth(i, ps)` を返します。
+不動点関数 `nth` はヘッダファイル `list.h` で宣言されています;
+`nth(i, ps)` はリスト `ps` の `i` 番目の要素を返します。
 
-This deals with the array access itself, but there is another problem: the `printf` call requires the `string` chunk for the string pointed to by element `k - 1` .
-This chunk is inside the `foreachp` chunk.
-We can extract it using lemma `foreachp_remove_nth` declared in ghost header `listex.gh` :
+これは配列アクセス自身を解決しますが、別の問題があります:
+`printf` 呼び出しは要素 `k - 1` によって指された文字列を表わす `string` チャンクを要求します。
+このチャンクは `foreachp` チャンクの内側にあります。
+ゴーストヘッダ `listex.gh` で宣言された補題 `foreachp_remove_nth` を使って、これを展開できます:
 
 ```
 lemma void foreachp_remove_nth<t>(int n);
@@ -3546,10 +3547,10 @@ lemma void foreachp_remove_nth<t>(int n);
     ensures foreachp<t>(remove_nth(n, xs), p) &*& p(nth(n, xs));
 ```
 
-It uses the fixpoint function `remove_nth` declared in `list.h`.
+これは `list.h` で宣言された不動点関数 `remove_nth` を使います。
 
-Once the `student` chunk for element `k - 1` is available, it is auto-opened and the `printf` call verifies.
-After the `printf` call, we need to merge the `student` chunk back into the `foreachp` chunk using the companion lemma `foreachp_unremove_nth` :
+要素 `k - 1` に対する `student` チャンクが有効になると、そのチャンクは自動 open され、`printf` 呼び出しは検証できます。
+`printf` 呼び出しの後、補題 `foreachp_unremove_nth` を使って、`student` チャンクを `foreachp` チャンクに結合する必要があります:
 
 ```
 lemma void foreachp_unremove_nth<t>(list<t> xs, int n);
@@ -3557,35 +3558,36 @@ lemma void foreachp_unremove_nth<t>(list<t> xs, int n);
     ensures foreachp<t>(xs, p);
 ```
 
-These two lemma calls are the only annotations required to verify the body of the second loop.
+これら2つの補題呼び出しは、2番目のループ本体を検証するために要求される唯一の注釈です。
 
-The third loop again traverses the loop front to back;
-a loop spec is indicated.
-Since the loop deallocates the memory blocks holding the student names, the `foreachp` chunk disappears from the postcondition:
+3番目のループは再び前から後ろへそのループを辿ります;
+ループの仕様は示されています。
+ループは生徒の名前を保持するメモリブロックを解放するので、`foreachp` チャンクは事後条件から消えます:
 
 ```c
 //@ requires names[i..n] |-> ?ps &*& foreachp(ps, student);
 //@ ensures names[old_i..n] |-> _;
 ```
 
-Verifying the body of the loop requires a few annotations.
-Firstly, on the path that exits the loop, we get a leak error, again because VeriFast does not realize that `i == n` means that `ps == nil` .
-Like in the first loop, we need to move the loop condition into the loop body and insert an explicit __open__ of the pointers chunk.
+ループ本体の検証には少しの注釈が必要です。
+1番目として、VeriFast は `i == n` が `ps == nil` を意味すると解釈しないので、ループから抜けるパスでリークエラーにります。
+最初のループと同様に、
+ループ条件をループ本体に移動し、`pointers` チャンクの明示的な __open__ を挿入する必要があります。
 
-The second problem is that the `free` call is not satisfied:
-a `free(a)` call where `a` is of type `char *` looks for a `malloc_block_chars(a, n)` chunk and a `chars(a, n, _)` chunk.
-The `malloc_block_chars` chunk is available inside the `foreachp` chunk, but the `chars` chunk is not;
-the memory block is instead described by a `string` chunk.
-Therefore, we need to transform the `string` chunk into a `chars` chunk.
-A lemma `string_to_chars` is available for this purpose in header `prelude.h` .
-We insert a call of this lemma before the `free` call.
+2番目の問題は `free` 呼び出しが満されないことです:
+`a` の型が `char *` であるような `free(a)` 呼び出しは `malloc_block_chars(a, n)` チャンクと `chars(a, n, _)` チャンクを探します。
+その `malloc_block_chars` チャンクは `foreachp` チャンクの内側にありますが、`chars` チャンクはありません;
+そのメモリブロックは代わりに `string` チャンクによって表わされています。
+したがって、`string` チャンクを `chars` チャンクに変換する必要があります。
+ヘッダ `prelude.h` の補題 `string_to_chars` がこの目的に有効です。
+この補題の呼び出しを `free` 呼び出しの手前に挿入しましょう。
 
-The third problem is that the `string_to_chars` call is not satisfied.
-The `string` chunk that it looks for can be obtained by opening the `foreachp` chunk and then opening the resulting `student` chunk,
-but the auto-open feature does not see this because the `student` chunk is not _statically_ inside the `foreachp` chunk;
-rather, it is inside the `foreachp` chunk only if its second argument is the name of the `student` predicate.
-The auto-open feature may support this scenario in the future, but for now we need to explicitly open the `foreachp` chunk.
-The final proof of the third loop looks as follows:
+3番目の問題は `string_to_chars` 呼び出しが満されないことです。
+それが探す `string` チャンクは `foreachp` チャンクを開いた後に得られた `student` チャンクを開くことで得られます。
+しかし `student` チャンクは `foreachp` チャンクの内側に _静的に_ (_statically_) 存在しないので、自動 open 機能はこれを見つけません;
+正確には、2番目の引数が述語 `student` の名前であったときのみ、そのチャンクは `foreachp` チャンクの内側に存在します。
+将来、自動 open 機能はこのようなシナリオをサポートするかもしれませんが、現時点では `foreachp` チャンクを明示的に開く必要があります。
+3番目のループの最終的な証明は次のようになります:
 
 ```c
 for (int i = 0; ; i++)
@@ -3602,7 +3604,7 @@ for (int i = 0; ; i++)
 }
 ```
 
-The program now verifies.
+これでこのプログラムは検証できます。
 
 __練習問題 33__
-Verify the program (available as `students.c` in directory `tutorial` of the VeriFast distribution).
+(VeriFast 配付版の `tutorial` ディレクトリの `students.c` ファイルである) このプログラムを検証してください。
