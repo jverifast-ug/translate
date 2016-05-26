@@ -1272,7 +1272,7 @@ void int_add(int *x_ptr, int *y_ptr)
 `produce_limits` コマンドの引数は (注釈中で宣言されたローカル変数でなく) C言語ローカル変数の名前でなければなりません。
 次のプログラムは検証できます。
 
-```
+```c
 #include "stdlib.h"
 void int_add(int *x_ptr, int *y_ptr)
     //@ requires integer(x_ptr, ?x_value) &*& integer(y_ptr, ?y_value);
