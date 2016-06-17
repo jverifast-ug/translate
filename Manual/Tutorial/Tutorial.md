@@ -36,7 +36,7 @@ VeriFast はシングルスレッドやマルチスレッドのC言語プログ�
 
 * http://www.cs.kuleuven.be/~bartj/verifast/
 
-コマンドラインのツール (`verifast.exe`) と GUI のツール (`vfide.exe`) を `bin` ディレクトリに見つかるでしょう。
+`bin` ディレクトリに、コマンドラインのツール (`verifast.exe`) と GUI のツール (`vfide.exe`) が見つかるでしょう。
 
 ## 2. 例: illegal_access.c
 
