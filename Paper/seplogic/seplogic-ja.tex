@@ -1,0 +1,67 @@
+%%
+%% 研究報告用スイッチ
+%% [techrep]
+%%
+%% 欧文表記無しのスイッチ(etitle,jkeyword,eabstract,ekeywordは任意)
+%% [noauthor]
+%%
+
+\documentclass[submit,techreq,noauthor,onecolumn]{ipsj}
+
+
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{latexsym}
+
+\def\Underline{\setbox0\hbox\bgroup\let\\\endUnderline}
+\def\endUnderline{\vphantom{y}\egroup\smash{\underline{\box0}}\\}
+\def\|{\verb|}
+
+\setcounter{page}{1}
+
+\pagestyle{empty}
+\begin{document}
+
+
+\title{Separation Logic: A Logic for Shared Mutable Data Structures}
+
+\author{John C. Reynolds}{}{}
+
+\begin{abstract}
+
+  In joint work with Peter O’Hearn and others, based on early ideas of Burstall,
+  we have developed an extension of Hoare logic that permits reasoning about low-level impera-tive programs that use shared mutable data structure.
+Peter O’Hearn等との共同作業では、Burstallの初期のアイデアに基づいて、私たちは、共有可変データ構造を使用する低レベルのimpera-的なプログラムについての推論を可能にするホーア論理の拡張機能を開発しました。
+
+  The simple imperative programming language is extended with commands (not expressions) for accessing and modifying shared structures,
+  and for explicit allocation and deallocation of storage.
+  Assertions are extended by introducing a “separating conjunction” that asserts that its subformulas hold for disjoint parts of the heap,
+  and a closely related “separating implication”.
+  Coupled with the inductive definition of predicates on abstract data structures,
+  this extension permits the concise and flexible description of structures with controlled sharing.
+  単純な命令型プログラミング言語は、共有構造にアクセスし、変更するためのコマンド（ない表現）で拡張され、明示的な割り当てとストレージの割り当て解除のために。アサーションは、その部分論理式がヒープの互いに素な部分のために保持することを主張する「分離接続詞」を導入することによって拡張されます
+。そして、密接に関連し、「分離含意」。抽象データ構造上の述語の帰納的定義と相まって、この拡張機能は、制御された共有を有する構造の簡潔で柔軟な記述を可能にします。
+
+  In this paper, we will survey the current development of this program logic, including extensions that permit unrestricted address arithmetic, dynamically allocated arrays, and recursive procedures. We will also discuss promising future directions.
+  本稿では、無制限のアドレス演算、動的に割り当てられた配列、および再帰的な手順を可能にする拡張を含め、このプログラムロジックの現在の開発を調査します。また、有望な将来の方向を議論します。
+
+\vspace{2mm}
+
+(この翻訳の元論文は http://www.cs.cmu.edu/~jcr/seplogic.pdf です。またこの翻訳は Japan VeriFast User Group https://github.com/jverifast-ug/ によるものです。著者である John C. Reynolds は2013年4月28日に他界されています。御冥福をお祈りするとともに、彼にこの翻訳をささげます。)
+\end{abstract}
+
+\maketitle
+\thispagestyle{empty}
+
+\section{はじめに}
+
+The use of shared mutable data structures, i.e., of structures where an updatable field can be referenced from more than one point, is widespread in areas as diverse as systems programming and artificial intelligence. Approaches to reasoning about this technique have been studied for three decades, but the result has been methods that suffer from either limited applicability or extreme complexity, and scale poorly to programs of even moderate size. (A partial bibliography is given in Reference.)
+更新可能なフィールドは、複数の点から参照することが可能な構造の共有可変データ構造、すなわち、の使用は、システムプログラミングや人工知能など多様な分野で普及しています。この技術についての推論へのアプローチは、三十年のために研究されてきたが、結果は限定された適用性や極端な複雑さのいずれかに苦しむ、さらには適度な大きさのプログラムに不十分なスケーリング方法となっています。（部分的な参考文献を参考に記載されています。）
+
+\begin{acknowledgment}
+\end{acknowledgment}
+
+\begin{thebibliography}{10}
+  (xxx 訳注: 元論文を参照してください xxx)
+\end{thebibliography}
+
+\end{document}
