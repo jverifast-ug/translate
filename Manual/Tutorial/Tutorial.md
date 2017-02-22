@@ -413,8 +413,8 @@ void account_deposit(struct account *myAccount, int amount)
 この関数は検査できません。
 シンボリックヒープに `account_balance` ヒープチャンクがないので、`balance` フィールドの更新は検査できないのです。
 そこには `account_pred` ヒープチャンクしかありません。
-`account_pred` ヒープチャンクは `account_balance` ヒープチャンクをカプセル化していますが、VeriFast は述語 `account_pred` を自動的に取り出しません。
-__open__ ゴースト命令文を挿入して、VeriFast に述語ヒープチャンクを取り出すよう指示する必要があります:
+`account_pred` ヒープチャンクは `account_balance` ヒープチャンクをカプセル化していますが、VeriFast は述語 `account_pred` を自動的に分解しません。
+__open__ ゴースト命令文を挿入して、VeriFast に述語ヒープチャンクを分解するよう指示する必要があります:
 
 ```c
 void account_deposit(struct account *myAccount, int amount)
@@ -428,7 +428,7 @@ void account_deposit(struct account *myAccount, int amount)
 
 これでこの割り当ては検査されましたが、VeriFast は事後条件で停止します。
 それは関数の呼び出し元へ返す `account_pred` ヒープチャンクが見つからないと訴えています。
-`account_pred` チャンクを構成するチャンクはシンボリックヒープ中に存在し、VeriFast は自動的にそれらを `account_pred` チャンクにまとめません。
+`account_pred` チャンクを構成するチャンクはシンボリックヒープ中に存在しますが、VeriFast は自動的にそれらを `account_pred` チャンクにまとめません。
 __close__ ゴースト命令文を使ってそれを行なうよう VeriFast に指示する必要があります:
 
 ```c
