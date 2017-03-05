@@ -1110,6 +1110,8 @@ void stack_filter(struct stack *stack, int_predicate *p)
     //@ ensures stack(stack, _);
 ```
 
+`is_int_predicate(p)` の代わりに `is_int_predicate(p) == true` と書くことに注意してください。VeriFast は後者の形式を述語表明としてパースし、かつそのような述語は存在しないため、これを拒絶します。　
+
 __練習問題 15__
 全てを統合してください。
 
