@@ -54,6 +54,10 @@
 
 "消費"
 
+### Conditional assertion
+
+"条件付き表明"
+
 ### Contract
 
 "契約"
