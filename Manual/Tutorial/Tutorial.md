@@ -1,16 +1,18 @@
 # プログラム検証器 VeriFast: チュートリアル
 
 * 著者: Bart Jacobs, Jan Smans, Frank Piessens
-* キーワード: iMinds-DistriNet, Department of Computer Science, KU Leuven - University of Leuven, Belgium
-* 元文書発行日時: October 8, 2014
+* 所属: iMinds-DistriNet, Department of Computer Science, KU Leuven - University of Leuven, Belgium
+* 元文書発行日時: February 15, 2017
 * 元文書: http://people.cs.kuleuven.be/~bart.jacobs/verifast/tutorial.pdf
+* 元文書リポジトリ: https://github.com/verifast/tutorial
 
 ## 1. 導入
 
 VeriFast はシングルスレッドやマルチスレッドのC言語プログラム (VeriFast は Java もサポートしています; _VeriFast for Java: A Tutorial_ を読んでください) の性質が正しいことを検証するプログラム検証ツールです。
 このツールは、1つ以上の .c ソースコードファイル (さらにそれらの .c ファイルから参照されている .h ヘッダファイル) から成るC言語プログラムを読み、「0 errors found  (エラーが見つからなかった)」とレポートするかエラーの可能性がある位置を示します。
 もしこのツールが「0 errors found」とレポートしたなら、そのプログラムは次のようであることを意味しています
-(このツールが時々「0 errors found」と間違ってレポートしてしまうのには (_不健全性_ (_unsoundnesses_) と呼ばれる) いくつかの理由があります; リファレンスマニュアルの「Known unsoundnesses」の章を読んでください; また知られていない不健全性もあるでしょう):
+(このツールが時々「0 errors found」と間違ってレポートしてしまうのには (_不健全性_ (_unsoundnesses_) と呼ばれる) いくつかの理由があります;
+https://github.com/verifast/verifast にある [soundness.md](https://github.com/verifast/verifast/blob/master/soundness.md) を読んでください。また知られていない不健全性もあるでしょう):
 
 * 構造体インスタンスが解放された後にその構造体のフィールドを読み書きすることや、もしくは配列の終端を超えた読み書き (これは _バッファオーバフロー_ と呼ばれ、オペレーティングシステムやインターネットサービスにおけるセキュリティ脆弱性の最も多い原因です) のような、不正なメモリアクセスを行ないません。なおかつ
 * データレース、すなわちマルチスレッドによる同じフィールドへの非同期な競合アクセス、として知られたある種の並行性のエラーを含みません。なおかつ
@@ -29,7 +31,7 @@ VeriFast はシングルスレッドやマルチスレッドのC言語プログ�
 そのシンボリックヒープは、あるメモリ位置へのアクセスに対する複数の (_チャンク_ (_chunks_) とも呼ばれる) パーミッション、1つの _シンボリックストア_ (_symbolic store_)、それぞれのローカル変数へのシンボリック値 (symbolic value) の割り当て、そして1つの _パスコンディション_ (_path condition_) を含みます。
 このときパスコンディションは、現時点の実行パスのシンボリック状態で使われている _シンボル_ (_symbols_) の値に関する _仮定_ (_assumptions_) の集合です。
 シンボリック実行は常に停止します。
-なぜならループ不変条件の使用のおかげで、それぞれのループ本体はたった一度だけシンボリックに実行され、関数呼び出しのシンボリック実行ではその事前条件と事後条件だけを使い、その本体は使用しないからです。
+なぜならループ不変条件の使用のおかげで、それぞれのループ本体はたった一度だけシンボリックに実行され、関数呼び出しのシンボリック実行ではその関数の事前条件と事後条件だけを使い、その本体は使用しないからです。
 
 筆者らは現在ツールの機能を少しずつ作成している最中です。
 このチュートリアルにある例や練習問題を試してみたい方は、次の VeriFast ウェブサイトから VeriFast をダウンロードしてください:
@@ -48,9 +50,9 @@ http://www.cs.kuleuven.be/~bartj/verifast/illegal_access.c
 
 VeriFast IDE にそのプログラムが表示されるでしょう。
 そのプログラムを検査するために、__Verify__ メニューの __Verify program__ コマンドを選択するか、__Play__ ツールバーボタンを押すか、F5 キーを押してください。
-下図のような結果になるでしょう。
+図1のような結果になるでしょう。
 
-![図1. illegal_access.c を開いた VeriFast IDE スクリーンショット](img/illegal_access.png)
+![図1. illegal_access.c を開いた VeriFast IDE スクリーンショット](img/illegal_access.png "図1. illegal_access.c を開いた VeriFast IDE スクリーンショット")
 
 このプログラムは _malloc_ を使って確保した構造体インスタンス `myAccount` のフィールド `balance` にアクセスしようと試みます。
 けれども、もしメモリが不足していたら、_malloc_ はゼロを返してメモリは確保されません。
@@ -58,31 +60,67 @@ VeriFast はこのような場合に起きる不正なメモリアクセスを�
 次の GUI の要素に注意してください:
 
 * 誤ったプログラムの要素が二重下線をともなって赤色で表示されます。
-* "No matching heap chunks: account_balance" というエラーメッセージが表示されます。実際メモリが不足した場合には、プログラムがアクセスを試みるメモリ位置 (もしくは _ヒープチャンク_ (_heap chunk_)) はアクセス可能ではありません。`account_balance` は `account` 構造体インスタンスの `balance` を表わすヒープチャンクの型です。
+* "No matching heap chunks: account_balance" というエラーメッセージが表示されます。実際メモリが不足した場合には、プログラムがアクセスを試みるメモリ位置 (もしくは _ヒープチャンク_ (_heap chunk_)) はアクセス可能ではありません。`account_balance` は、構造体 `account` インスタンスの `balance` フィールドを表わすヒープチャンクの型です。
 * 代入文が黄色バックグラウンドで表示されています。これはその代入文が _現在のステップ_ (_current step_) であるためです。関係するプログラム状態のシンボリック表現のトラックを保持しながら、そこへのステップで VeriFast はそれぞれの関数を検証します。VeriFast ウィンドウの左下コーナーの Steps ペインでステップを選択することで、それぞれのステップでのシンボリック状態を検査できます。その現在のステップに相当するプログラムの要素は黄色バッグラウンドで表示されます。シンボリック状態は、Assumptions ペインに表示された _パスコンディション_ と; Heap chunks ペインに表示された _シンボリックヒープ_ と; Locals ペインに表示された _シンボリックストア_ で構成されます。
 
 このエラーを修正するために、コメント化された命令文のコメントをはずしてください。
 そして再び F5 を押してください。
-これでプログラムは検証され、Steps ペインにシンボリック実行パスは表示されません。
+We get a green bar: the program now verifies. This means VeriFast has symbolically executed all possible paths of execution through function `main`, and found no errors.
 
-`main` 関数のシンボリック実行を検査するために、カーソルを最後の行 (すなわち関数本体を閉じる括弧) に置いて __Verify__ メニューから __Run to cursor__ コマンドを選択するか、__Run to cursor__ ツールバーボタンを押すか、Ctrl+F5 を押してください。(下図を見てください。)
+Let's take a closer look at how VeriFast symbolically executed this function. After VeriFast has symbolically executed a program, you can view the _シンボリック実行木_ for each function in the Trees pane. The Trees pane is hidden by default, but you can reveal it by dragging the right-hand border of the VeriFast window to the left. At the top of the Trees pane is a drop-down list of all functions that have been symbolically executed. Select the _Verifying function `main`_ item to view the symbolic execution tree for function `main`.
 
-![図2. VeriFast IDE が関数 main のシンボリック実行パスを表示](img/illegal_access2.png)
+A symbolic execution tree has three kinds of nodes:
 
-カーソルまでの実行とはそのカーソルに至る実行パスを示すことを意味しています。
-一般的に、そのようなパスは複数存在する可能性があります; この場合 (そのプログラムテキストによって誘導された分岐の順によって導入されたパスの順番での) その最初のパスが選ばれます。
-この例では、唯一1つのパスのみ存在します。
+* The _top node_ represents the start of the symbolic execution. Click the top node: in the initial symbolic execution state, there are no heap chunks (the Heap chunks pane is empty), there are no local variables (the Locals pane is empty), and there are no assumptions (the Assumptions pane is empty).
+* There is one _branch node_ at each point where a symbolic execution path forks into two paths. This happens when multiple cases need to be considered in the symbolic execution; it is therefore also called a _case split_. The symbolic execution of function `main` involves one case split: symbolic execution of a `malloc` call forks into one branch where no memory is available and therefore `malloc` returns a null pointer, and another branch where memory is available and therefore `malloc` allocates the requested amount of memory and returns a pointer to it. (A case split also happens when symbolically executing the `if` statement, but since the two cases of the `if` statement coincide with the two cases of the `malloc` statement, no separate branch node is shown.)
+* There is one _leaf node_ at the end of each complete symbolic execution path through the function. Click any leaf node to see the full corresponding symbolic execution path in the Steps pane. Function `main` has two symbolic execution paths: the path where no memory is available ends when the program ends due to the call of `abort`; the path where memory is available ends when the function returns.
 
-どのように VeriFast がメモリの状態を追跡するのか理解するために、図のように Steps ペインの5番目のステップを選択してください。
-_free_ 命令文が次に実行される文です。
-このステップでは、そのシンボリックヒープは2つのヒープチャンクを含んでいます: `account_balance(myAccount, 5)` と `malloc_block_account(myAccount)` です。
-1つ目のヒープチャンクは、アドレス `myAccount` にある `account` 構造体インスタンスの `balance` フィールドはプログラムからアクセス可能で、値 5 を持つという事実を意味しています。
-2つ目のヒープチャンクは、プログラムはアドレス `myAccount` にあるメモリブロックを解放する許可を持つという事実を意味しています。
-次のステップを選択すれば、_free_ 命令文がシンボリックヒープからこの両方のヒープチャンクを削除することに気が付くでしょう。
-実際には、この構造体インスタンスの解放は、その構造体インスタンスのフィールドへのアクセスの許可と、その構造体インスタンスを解放する許可の両方を削除します。
-これは不正なメモリアクセスと二重解放エラーを防止します。
+Click the rightmost leaf node to view the execution path where `malloc` successfully allocates memory. Notice that VeriFast shows arrows in the left margin next to the code of function `main` to indicate that this path executes the second case of the `malloc` statement and the second case of the `if` statement.
 
-## 3. malloc block チャンク
+To better understand the details of VeriFast's symbolic execution, we will step through this path from the top. Select the first step in the Steps pane. Then, press the Down arrow key. The _Verifying function `main`_ step does not affect the symbolic state. The _Producing assertion_ step adds the assumption _true_ to the Assumptions. We will consider production and consumption of assertions in detail later in this tutorial. We now arrive at the _Executing statement_ step for the `malloc` statement. This statement affects the symbolic state in three ways:
+
+* It adds the heap chunks _account\_balance(myAccount, value)_ and _malloc\_block\_account(myAccount)_ to the symbolic heap (as shown in the Heap chunks pane). Here, _myAccount_ and _value_ are _symbols_ that represent unknown values. Specifically, _myAccount_ represents the memory address of the newly allocated struct instance, and _value_ represents the initial value of the `balance` field of the struct instance. (In C, the initial values of the fields of a newly allocated struct instance are unspecified, unlike in Java where the fields of a new object are initialized to the default value of their type.) VeriFast _freshly picks_ these symbols during this symbolic execution step. That is, to represent the address of the new struct instance and the initial value of the `balance` field, VeriFast uses symbols that are not yet being used on this symbolic execution path. To see this, try verifying the function `test` shown below. Notice that to symbolically execute the first `malloc` statement, VeriFast picked symbols _myAccount_ and _value_, and to symbolically execute the second `malloc` statement, VeriFast picked symbols _myAccount0_ and _value0_.
+
+```c
+void test()
+    //@ requires true;
+    //@ ensures true;
+{
+    {
+        struct account *myAccount = malloc(sizeof(struct account));
+        if (myAccount == 0) { abort(); }
+    }
+    {
+        struct account *myAccount = malloc(sizeof(struct account));
+        if (myAccount == 0) { abort(); }
+    }
+}
+```
+
+* It adds the assumption _myAccount_ ≠ 0 (perhaps written differently) to the path condition (as shown in the Assumptions pane). Indeed, if `malloc` succeeds, the returned pointer is not a null pointer.
+* It adds a binding to the symbolic store (shown in the Locals pane) that binds local variable `myAccount` to symbolic value _myAccount_. Indeed, the program assigns the result of the `malloc` call (represented by the symbol _myAccount_) to the local variable `myAccount`. Note that the fact that in this case the local variable and the symbol have the same name is incidental and has no special significance.
+
+![図2. _malloc_ 命令文のシンボリック実行 (1つ目の場合)](img/symexec-malloc-case1.png "図2. _malloc_ 命令文のシンボリック実行 (1つ目の場合)")
+![図3. _malloc_ 命令文のシンボリック実行 (2つ目の場合)](img/symexec-malloc-case2.png "図3. _malloc_ 命令文のシンボリック実行 (2つ目の場合)")
+
+図3 summarizes the symbolic execution of `malloc` statements, in the successful case. 図2 summarizes the unsuccessful case.
+
+The next step in the symbolic execution trace is the symbolic execution of the `if` statement. An `if` statement is like a `malloc` statement in the sense that there are two cases to consider; therefore, for `if` statements, too, VeriFast performs a case split and forks the symbolic execution path into two branches. On the first branch, VeriFast considers the case where the condition of the `if` statement is true. It adds the assumption that this is the case to the path condition and symbolically executes the _then_ block of the `if` statement. On the second branch, VeriFast considers the case where the condition of the `if` statement is false. It adds the corresponding assumption to the path condition and symbolically executes the _else_ block, if any. Note that after adding an assumption to the path condition, VeriFast always checks if it can detect an inconsistency in the resulting path condition; if so, the current symbolic execution path does not correspond to any real execution path, so there is no point in continuing the symbolic execution of this path and VeriFast abandons it. This is what happens with the first branch of the `if` statement after a successful `malloc`; it is also what happens with the second branch of the `if` statement after an unsuccessful `malloc`.
+
+![図4. _if_ 命令文のシンボリック実行 (1つ目の場合)。シンボリック実行は _if_ 命令文の _them_ ブロックを実行します。](img/symexec-if-case1.png "図4. _if_ 命令文のシンボリック実行 (1つ目の場合)。シンボリック実行は _if_ 命令文の _them_ ブロックを実行します。")
+![図5. _if_ 命令文のシンボリック実行 (2つ目の場合)。シンボリック実行は _if_ 命令文の _else_ ブロックを実行します。](img/symexec-if-case2.png "図5. _if_ 命令文のシンボリック実行 (2つ目の場合)。シンボリック実行は _if_ 命令文の _else_ ブロックを実行します。")
+
+図4 and 図5 summarize the two cases of the symbolic execution of an `if` statement.
+
+The next step of the symbolic execution path symbolically executes the statement that assigns value 5 to the `balance` field of the newly allocated struct instance. When symbolically executing an assignment to a field of a struct instance, VeriFast first checks that a heap chunk for that field of that struct instance is present in the symbolic heap. If not, it reports a ``No such heap chunk'' verification failure. It might mean that the program is trying to access unallocated memory. If the chunk is present, VeriFast replaces the second argument of the chunk with the value of the right-hand side of the assignment. This is shown in 図6.
+
+![図6. 構造体フィールドへの代入文のシンボリック実行](img/symexec-field-update.png "図6. 構造体フィールドへの代入文のシンボリック実行")
+
+Finally, symbolic execution of the `free` statement checks that the two heap chunks that were added by the `malloc` statement (the chunk for the `balance` field and the malloc block chunk) are still present in the symbolic heap. If not, VeriFast reports a verification failure; the program might be trying to free a struct instance that has already been freed. Otherwise, it removes the chunks, as shown in 図7. This ensures that if a program frees a struct instance and then attempts to access that struct instance's fields, symbolic execution of the statements accessing the fields will fail (because the heap chunks for the fields will be missing).
+
+![図7. _free_ 命令文のシンボリック実行](img/symexec-free.png "図7. _free_ 命令文のシンボリック実行")
+
+## 3. malloc_block チャンク
 
 なぜ _malloc_ 命令文が `account_balance` チャンクと `malloc_block_account` チャンクの両方を生成するのかをより理解するために、ヒープに確保される代わりにスタック上のローカル変数として構造体インスタンスが確保されるようにプログラムを変更しましょう:
 
@@ -212,7 +250,7 @@ void account_set_balance(struct account *myAccount, int newBalance)
 次のステップを選択します。
 `malloc` 命令文が `account_balance` チャンクと `malloc_block_account` チャンクを追加しました。
 
-if 命令文は作用がありません。
+_if_ 命令文は作用がありません。
 
 そうして `account_set_balance` を呼び出します。
 この実行ステップは "Consuming assertion" と "Producing assertion" という名前の2つの子ステップを持つことに気が付くでしょう。
@@ -221,9 +259,9 @@ if 命令文は作用がありません。
 事前条件の消費は、その関数から要求されたヒープチャンクをその関数に渡すことを意味し、従ってそれらをシンボリックヒープから削除します。
 事後条件の生成は、その関数が返るときにその関数から提示されたヒープチャンクを受け取ることを意味し、従ってそれらをシンボリックヒープに追加します。
 
-![図3. 関数呼び出しをステップ実行したとき、VeriFast は (下のペインに緑色で) 呼び出し元と (上のペインに黄色で) 呼び出された契約の両方を表示](img/illegal_access3.png)
+![図8. 関数呼び出しをステップ実行したとき、VeriFast は (下のペインに緑色で) 呼び出し元と (上のペインに黄色で) 呼び出された契約の両方を表示](img/illegal_access3.png)
 
-"Consuming assertion" ステップを選択すると VeriFast ウィンドウのレイアントが変わります (上図を見てください)。
+"Consuming assertion" ステップを選択すると VeriFast ウィンドウのレイアントが変わります (図8を見てください)。
 ソースコードペインが2つの部分に分かれます。
 上の部分は呼び出された関数の契約を表示するのに使われ、下の部分は検査される関数を表示するのに使われます。
 (この例では呼び出される関数は検査される関数と近接しているので、上と下のパートは同じものが表示されます。)
@@ -552,7 +590,7 @@ __練習問題 6__
 無限再帰や無限ループをエラーにしないのです。
 それはあなた自身の責務です。)
 
-__if__ 命令文を検証するとき、VeriFast は場合分けを行なうことに注意してください。
+_if_ 命令文を検証するとき、VeriFast は場合分けを行なうことに注意してください。
 
 __練習問題 7__
 スタックの要素の値の合計を返す関数 `stack_get_sum` を追加してください。

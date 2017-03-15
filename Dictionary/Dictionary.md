@@ -278,6 +278,10 @@
 
 "シンボリック実行"
 
+### Symbolic execution tree
+
+"シンボリック実行木"
+
 ### Symbolic heap
 
 "シンボリックヒープ"
