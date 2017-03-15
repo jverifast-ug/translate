@@ -53,7 +53,8 @@ VeriFast IDE にそのプログラムが表示されるでしょう。
 図1のような結果になるでしょう。
 
 ![図1. illegal_access.c を開いた VeriFast IDE スクリーンショット](img/illegal_access.png "図1. illegal_access.c を開いた VeriFast IDE スクリーンショット")
-図1. illegal_access.c を開いた VeriFast IDE スクリーンショット
+
+__図1. illegal_access.c を開いた VeriFast IDE スクリーンショット__
 
 このプログラムは _malloc_ を使って確保した構造体インスタンス `myAccount` のフィールド `balance` にアクセスしようと試みます。
 けれども、もしメモリが不足していたら、_malloc_ はゼロを返してメモリは確保されません。
