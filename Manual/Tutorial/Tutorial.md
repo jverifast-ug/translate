@@ -8,7 +8,7 @@
 
 ## 1. 導入
 
-VeriFast はシングルスレッドやマルチスレッドのC言語プログラム (VeriFast は Java もサポートしています; _VeriFast for Java: A Tutorial_ を読んでください) の性質が正しいことを検証するプログラム検証ツールです。
+VeriFast はシングルスレッドやマルチスレッドのC言語プログラム (VeriFast は Java もサポートしています; [VeriFast for Java: A Tutorial](https://people.cs.kuleuven.be/~bart.jacobs/verifast/verifast-java-tutorial.pdf) を読んでください) の性質が正しいことを検証するプログラム検証ツールです。
 このツールは、1つ以上の .c ソースコードファイル (さらにそれらの .c ファイルから参照されている .h ヘッダファイル) から成るC言語プログラムを読み、「0 errors found  (エラーが見つからなかった)」とレポートするかエラーの可能性がある位置を示します。
 もしこのツールが「0 errors found」とレポートしたなら、そのプログラムは次のようであることを意味しています
 (このツールが時々「0 errors found」と間違ってレポートしてしまうのには (_不健全性_ (_unsoundnesses_) と呼ばれる) いくつかの理由があります;
