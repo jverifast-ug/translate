@@ -102,15 +102,25 @@ void test()
 * It adds the assumption _myAccount_ ≠ 0 (perhaps written differently) to the path condition (as shown in the Assumptions pane). Indeed, if `malloc` succeeds, the returned pointer is not a null pointer.
 * It adds a binding to the symbolic store (shown in the Locals pane) that binds local variable `myAccount` to symbolic value _myAccount_. Indeed, the program assigns the result of the `malloc` call (represented by the symbol _myAccount_) to the local variable `myAccount`. Note that the fact that in this case the local variable and the symbol have the same name is incidental and has no special significance.
 
-![図2. _malloc_ 命令文のシンボリック実行 (1つ目の場合)](img/symexec-malloc-case1.png "図2. _malloc_ 命令文のシンボリック実行 (1つ目の場合)")
-![図3. _malloc_ 命令文のシンボリック実行 (2つ目の場合)](img/symexec-malloc-case2.png "図3. _malloc_ 命令文のシンボリック実行 (2つ目の場合)")
+![図2. malloc 命令文のシンボリック実行 (1つ目の場合)](img/symexec-malloc-case1.png "図2. malloc 命令文のシンボリック実行 (1つ目の場合)")
+
+__図2. malloc 命令文のシンボリック実行 (1つ目の場合)__
+
+![図3. malloc 命令文のシンボリック実行 (2つ目の場合)](img/symexec-malloc-case2.png "図3. malloc 命令文のシンボリック実行 (2つ目の場合)")
+
+__図3. malloc 命令文のシンボリック実行 (2つ目の場合)__
 
 図3 summarizes the symbolic execution of `malloc` statements, in the successful case. 図2 summarizes the unsuccessful case.
 
 The next step in the symbolic execution trace is the symbolic execution of the `if` statement. An `if` statement is like a `malloc` statement in the sense that there are two cases to consider; therefore, for `if` statements, too, VeriFast performs a case split and forks the symbolic execution path into two branches. On the first branch, VeriFast considers the case where the condition of the `if` statement is true. It adds the assumption that this is the case to the path condition and symbolically executes the _then_ block of the `if` statement. On the second branch, VeriFast considers the case where the condition of the `if` statement is false. It adds the corresponding assumption to the path condition and symbolically executes the _else_ block, if any. Note that after adding an assumption to the path condition, VeriFast always checks if it can detect an inconsistency in the resulting path condition; if so, the current symbolic execution path does not correspond to any real execution path, so there is no point in continuing the symbolic execution of this path and VeriFast abandons it. This is what happens with the first branch of the `if` statement after a successful `malloc`; it is also what happens with the second branch of the `if` statement after an unsuccessful `malloc`.
 
-![図4. _if_ 命令文のシンボリック実行 (1つ目の場合)。シンボリック実行は _if_ 命令文の _them_ ブロックを実行します。](img/symexec-if-case1.png "図4. _if_ 命令文のシンボリック実行 (1つ目の場合)。シンボリック実行は _if_ 命令文の _them_ ブロックを実行します。")
-![図5. _if_ 命令文のシンボリック実行 (2つ目の場合)。シンボリック実行は _if_ 命令文の _else_ ブロックを実行します。](img/symexec-if-case2.png "図5. _if_ 命令文のシンボリック実行 (2つ目の場合)。シンボリック実行は _if_ 命令文の _else_ ブロックを実行します。")
+![図4. if 命令文のシンボリック実行 (1つ目の場合)。シンボリック実行は if 命令文の them ブロックを実行します。](img/symexec-if-case1.png "図4. if 命令文のシンボリック実行 (1つ目の場合)。シンボリック実行は if 命令文の them ブロックを実行します。")
+
+__図4. if 命令文のシンボリック実行 (1つ目の場合)。シンボリック実行は if 命令文の them ブロックを実行します。__
+
+![図5. if 命令文のシンボリック実行 (2つ目の場合)。シンボリック実行は if 命令文の else ブロックを実行します。](img/symexec-if-case2.png "図5. if 命令文のシンボリック実行 (2つ目の場合)。シンボリック実行は if 命令文の else ブロックを実行します。")
+
+__図5. if 命令文のシンボリック実行 (2つ目の場合)。シンボリック実行は if 命令文の else ブロックを実行します。__
 
 図4 and 図5 summarize the two cases of the symbolic execution of an `if` statement.
 
@@ -118,9 +128,13 @@ The next step of the symbolic execution path symbolically executes the statement
 
 ![図6. 構造体フィールドへの代入文のシンボリック実行](img/symexec-field-update.png "図6. 構造体フィールドへの代入文のシンボリック実行")
 
+__図6. 構造体フィールドへの代入文のシンボリック実行__
+
 Finally, symbolic execution of the `free` statement checks that the two heap chunks that were added by the `malloc` statement (the chunk for the `balance` field and the malloc block chunk) are still present in the symbolic heap. If not, VeriFast reports a verification failure; the program might be trying to free a struct instance that has already been freed. Otherwise, it removes the chunks, as shown in 図7. This ensures that if a program frees a struct instance and then attempts to access that struct instance's fields, symbolic execution of the statements accessing the fields will fail (because the heap chunks for the fields will be missing).
 
-![図7. _free_ 命令文のシンボリック実行](img/symexec-free.png "図7. _free_ 命令文のシンボリック実行")
+![図7. free 命令文のシンボリック実行](img/symexec-free.png "図7. free 命令文のシンボリック実行")
+
+__図7. free 命令文のシンボリック実行__
 
 ## 3. malloc_block チャンク
 
