@@ -40,6 +40,10 @@
 
 "分岐"
 
+### Branch node
+
+"分岐ノード"
+
 ## C
 
 ### Case split
@@ -154,6 +158,10 @@
 ## K
 ## L
 
+### Leaf node
+
+"葉ノード"
+
 ### Lemma
 
 "補題"
@@ -169,6 +177,10 @@
 ### List segment
 
 "リストセグメント"
+
+### Local variable
+
+"ローカル変数"
 
 ### Lock invariant
 
@@ -307,6 +319,10 @@
 ### Tail
 
 "テイル"
+
+### Top node
+
+"先頭ノード"
 
 ## U
 
