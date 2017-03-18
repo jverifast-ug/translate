@@ -298,6 +298,10 @@
 
 "シンボリック値"
 
+### Symbolically execute
+
+"シンボリックに実行する"
+
 ## T
 
 ### Tail

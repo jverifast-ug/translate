@@ -67,11 +67,16 @@ VeriFast はこのような場合に起きる不正なメモリアクセスを�
 
 このエラーを修正するために、コメント化された命令文のコメントをはずしてください。
 そして再び F5 を押してください。
-We get a green bar: the program now verifies. This means VeriFast has symbolically executed all possible paths of execution through function `main`, and found no errors.
+バーは緑色になるでしょう; これでこのプログラムは検証されました。
+これは VeriFast が `main` 関数を実行する全てのパスをシンボリックに実行し、かつエラーが見つからなかったことを意味しています。
 
-Let's take a closer look at how VeriFast symbolically executed this function. After VeriFast has symbolically executed a program, you can view the _シンボリック実行木_ for each function in the Trees pane. The Trees pane is hidden by default, but you can reveal it by dragging the right-hand border of the VeriFast window to the left. At the top of the Trees pane is a drop-down list of all functions that have been symbolically executed. Select the _Verifying function `main`_ item to view the symbolic execution tree for function `main`.
+VeriFast がこの関数をどのようにシンボリックに実行するのか良く調べてみましょう。
+VeriFast プログラムをシンボリックに実行した後、Trees ペインにそれぞれの関数に対する _シンボリック実行木_ を見ることができます。
+この Trees ペインはデフォルトでは隠されていますが、VeriFast ウィンドウの右端の縁を左にドラッグすることで現われます。
+Trees ペインの上部は、シンボリックに実行された全ての関数のドロップダウンリストです。
+`main` 関数のシンボリック実行木を見るために、_Verifying function 'main'_ を選択してください。
 
-A symbolic execution tree has three kinds of nodes:
+シンボリック実行木は3種類のノードを持ちます:
 
 * The _top node_ represents the start of the symbolic execution. Click the top node: in the initial symbolic execution state, there are no heap chunks (the Heap chunks pane is empty), there are no local variables (the Locals pane is empty), and there are no assumptions (the Assumptions pane is empty).
 * There is one _branch node_ at each point where a symbolic execution path forks into two paths. This happens when multiple cases need to be considered in the symbolic execution; it is therefore also called a _case split_. The symbolic execution of function `main` involves one case split: symbolic execution of a `malloc` call forks into one branch where no memory is available and therefore `malloc` returns a null pointer, and another branch where memory is available and therefore `malloc` allocates the requested amount of memory and returns a pointer to it. (A case split also happens when symbolically executing the `if` statement, but since the two cases of the `if` statement coincide with the two cases of the `malloc` statement, no separate branch node is shown.)
