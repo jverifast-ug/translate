@@ -36,6 +36,10 @@
 
 ## B
 
+### Binding
+
+"束縛"
+
 ### Branch
 
 "分岐"
@@ -95,6 +99,10 @@
 ### Fact
 
 "事実"
+
+### Freshly pick
+
+"新しく採取する"
 
 ### Fixpoint function
 
