@@ -148,22 +148,23 @@ __図5. if 命令文のシンボリック実行 (2つ目の場合)。シンボ�
 
 図4と図5は `if` 命令文のシンボリック実行の2つの場合を要約しています。
 
-The next step of the symbolic execution path symbolically executes the statement that assigns value 5 to the `balance` field of the newly allocated struct instance.
-When symbolically executing an assignment to a field of a struct instance, VeriFast first checks that a heap chunk for that field of that struct instance is present in the symbolic heap.
-If not, it reports a ``No such heap chunk'' verification failure.
-It might mean that the program is trying to access unallocated memory.
-If the chunk is present, VeriFast replaces the second argument of the chunk with the value of the right-hand side of the assignment.
-This is shown in 図6.
+このシンボリック実行トレースの次のステップは、新しく確保した構造体インスタンスの `balance` フィールドに値 5 を割り当てる命令文をシンボリックに実行します。
+構造体インスタンスのフィールドを割り当てるとき、最初に VeriFast は当該構造体インスタンスのフィールドを表わすヒープチャンクがシンボリックヒープに存在するかチェックします。
+もし存在しなければ、検証に失敗し ``No such heap chunk'' とレポートします。
+これはそのプログラムがまだ確保されていないメモリにアクセスしようとしたことをおそらく意味しています。
+もしそのチャンクが存在したら、VeriFast はそのチャンクの2番目の引数を割り当ての右辺の値に置き換えます。
+これは図6のようになるでしょう。
 
 ![図6. 構造体フィールドへの代入文のシンボリック実行](img/symexec-field-update.png "図6. 構造体フィールドへの代入文のシンボリック実行")
 
 __図6. 構造体フィールドへの代入文のシンボリック実行__
 
-Finally, symbolic execution of the `free` statement checks that the two heap chunks that were added by the `malloc` statement (the chunk for the `balance` field and the malloc block chunk) are still present in the symbolic heap.
-If not, VeriFast reports a verification failure;
-the program might be trying to free a struct instance that has already been freed.
-Otherwise, it removes the chunks, as shown in 図7.
-This ensures that if a program frees a struct instance and then attempts to access that struct instance's fields, symbolic execution of the statements accessing the fields will fail (because the heap chunks for the fields will be missing).
+最後に、`free` 命令文のシンボリック実行は `malloc` 命令文で追加された2つのヒープチャンク (`balance` フィールドを表わすチャンクと malloc_block チャンク) がまだシンボリックヒープに存在するかチェックします。
+もし存在しなければ、VeriFast は検証に失敗します;
+そのプログラムは既に解放済みの構造体インスタンスを解放しようとしているのかもしれません。
+そうでなければ、図7に示すようにそのチャンクを削除します。
+これはもしプログラムが構造体インスタンスを解放してからその構造体インスタンスのフィールドにアクセスしようと試みたら、そのフィールドにアクセスする命令文のシンボリック実行が失敗することを保証します。
+(なぜならそのフィールドを表わすヒープチャンクが見つからないからです。)
 
 ![図7. free 命令文のシンボリック実行](img/symexec-free.png "図7. free 命令文のシンボリック実行")
 
