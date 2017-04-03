@@ -96,7 +96,7 @@
 
 ### Executing statement
 
-"命令文実行"
+"文の実行"
 
 ## F
 
@@ -285,6 +285,10 @@
 ### Soundness
 
 "健全性"
+
+### Statement
+
+"文"
 
 ### Stepping
 
