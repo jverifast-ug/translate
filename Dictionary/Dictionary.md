@@ -62,6 +62,14 @@
 
 "チャンク"
 
+### Concrete execution path
+
+"実際の実行パス"
+
+### Concrete execution tree
+
+"実際の実行木"
+
 ### Consuming
 
 "消費"
@@ -111,6 +119,14 @@
 ### Fixpoint function
 
 "不動点関数"
+
+### Fork
+
+"分岐"
+
+### Fork node
+
+"分岐ノード"
 
 ### Fraction
 
@@ -305,6 +321,10 @@
 ### Symbolic execution
 
 "シンボリック実行"
+
+### Symbolic execution forest
+
+"シンボリック実行フォレスト"
 
 ### Symbolic execution tree
 
