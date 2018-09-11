@@ -116,6 +116,14 @@
 
 "新しく採取する"
 
+### Field chunk-specific
+
+"フィールドチャンク固有の"
+
+```
+myAccount->balance |-> _
+```
+
 ### Fixpoint function
 
 "不動点関数"
@@ -141,6 +149,14 @@
 "フルパーミッション"
 
 ## G
+
+### Generic chunk
+
+"総称チャンク"
+
+```
+account_balance(myAccount, _)
+```
 
 ### Generics
 
